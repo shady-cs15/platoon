@@ -1,0 +1,50 @@
+[project]
+name = "platoon"
+version = "0.1.0"
+description = "Build and train systems of agents."
+authors = [
+    {name = "Apurva Gandhi", email = "apurvag@cs.cmu.edu"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ai-rubric",
+    "ipython>=9.4.0",
+]
+
+[tool.uv]
+override-dependencies = ["fastapi[standard]>=0.115.0"]
+
+[tool.uv.sources]
+appworld = { git = "https://github.com/stonybrooknlp/appworld" }
+ai-rubric = { git = "https://github.com/ApGa/rubric", rev = "apga/llm-scorer" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.0",
+    "pre-commit>=4.2.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.11.9",
+]
+
+appworld = [
+    "appworld"
+]
+interactive = [
+    "notebook>=7.4.4",
+]
+tui = [
+    "rich>=13.9.4",
+    "textual>=5.3.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

@@ -1,0 +1,23 @@
+# Task
+
+{{ task }}
+
+# Action Space
+
+{{ action_space_description }}
+
+{% if parent_action_history_description is defined %}
+# Parent Agent Action History
+
+{{ parent_action_history_description }}
+
+# Your Action History
+{% else %}
+# Action History
+{% endif %}
+
+{{ action_history_description }}
+
+# Next Action
+
+{{ next_action_str}}
