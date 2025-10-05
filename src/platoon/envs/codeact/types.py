@@ -26,7 +26,6 @@ class CodeActStep(TrajectoryStep):
     output: str | None = None
     error: str | None = None
     reward: float = 0.
-    misc: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.thought_processor = thought_processor

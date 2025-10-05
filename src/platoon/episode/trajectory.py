@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from typing import Any, Protocol, TypeAlias, runtime_checkable, Iterable
+from typing import Any, Protocol, runtime_checkable, Iterable
 import uuid
 from collections import defaultdict
 
@@ -9,7 +9,9 @@ from platoon.episode.context import finish_message
 from platoon.envs.base import Task
 from platoon.episode.context import current_trajectory, current_trajectory_collection
 
-TrajectoryStep: TypeAlias = Any
+@dataclass
+class TrajectoryStep:
+    misc: dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class ParentInfo:

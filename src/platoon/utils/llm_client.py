@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from typing import Any, cast, TypeAlias, TypedDict
 
@@ -247,6 +249,10 @@ class LLMClient:
     async def aclose(self) -> None:
         """Close the async client connection."""
         await self.async_client.close()
+        
+    def fork(self) -> LLMClient:
+        return LLMClient(api_key=self.api_key, model=self.model, base_url=self.base_url)
+
 
 
 def create_llm_client(
