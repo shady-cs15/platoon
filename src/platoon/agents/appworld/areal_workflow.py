@@ -5,6 +5,7 @@ from areal.utils.data import concat_padded_tensors
 import asyncio
 from copy import deepcopy
 from concurrent.futures import ProcessPoolExecutor
+import multiprocessing as mp
 
 class AppWorldArealWorkflow:
     def __init__(self, config):
@@ -23,15 +24,15 @@ class AppWorldArealWorkflow:
         client = ArealLLMClient(model=self.config['model_name'], engine=engine)
         
         loop = asyncio.get_event_loop()
-        executor = ProcessPoolExecutor(max_workers=1)
         
         config = deepcopy(self.config)
         config['llm_client'] = client # TODO: Need to think of a more explicit arg passing story.
         task_id = data['task_id']
         
         args = (task_id, config)
-        
-        results = await loop.run_in_executor(executor, run_single_rollout_process, args)
+        # Use spawn context to avoid forking when AReaL's workflow thread/event loop is active
+        with ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn")) as executor:
+            results = await loop.run_in_executor(executor, run_single_rollout_process, args)
         
         areal_completion_data_list = []
         for trajectory in results['trajectories'].values():
@@ -47,14 +48,15 @@ class AppWorldArealRecursiveWorkflow(AppWorldArealWorkflow):
     async def arun_episode(self, engine, data):
         client = ArealLLMClient(model=self.config['model_name'], engine=engine)
         loop = asyncio.get_event_loop()
-        executor = ProcessPoolExecutor(max_workers=1)
         
         config = deepcopy(self.config)
         config['llm_client'] = client # TODO: Need to think of a more explicit arg passing story.
         task_id = data['task_id']
         
         args = (task_id, config)
-        results = await loop.run_in_executor(executor, run_single_recursive_rollout_process, args)
+        # Use spawn context to avoid forking issues
+        with ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn")) as executor:
+            results = await loop.run_in_executor(executor, run_single_recursive_rollout_process, args)
         
         areal_completion_data_list = []
         for trajectory in results['trajectories'].values():

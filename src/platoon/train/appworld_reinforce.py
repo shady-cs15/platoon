@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import os
 import sys
 from copy import deepcopy
@@ -7,10 +6,10 @@ import torch.distributed as dist
 from torchdata.stateful_dataloader import StatefulDataLoader
 
 from areal.api.alloc_mode import AllocationMode
-from areal.api.cli_args import PPOConfig, load_expr_config, conf_as_dict
+from areal.api.cli_args import GRPOConfig, load_expr_config
 from areal.api.io_struct import FinetuneSpec, StepInfo, WeightUpdateMeta
+from areal.dataset import get_custom_dataset
 from areal.engine.ppo.actor import FSDPPPOActor
-from areal.engine.ppo.critic import FSDPPPOCritic
 from areal.engine.sglang_remote import RemoteSGLangEngine
 from areal.platforms import current_platform
 from areal.utils import seeding, stats_tracker
@@ -25,20 +24,22 @@ from areal.utils.hf_utils import load_hf_tokenizer
 from areal.utils.recover import RecoverHandler
 from areal.utils.saver import Saver
 from areal.utils.stats_logger import StatsLogger
+from areal.workflow.rlvr import RLVRWorkflow
 from appworld import load_task_ids
 from datasets import Dataset
 from platoon.agents.appworld.areal_workflow import AppWorldArealWorkflow, AppWorldArealRecursiveWorkflow
-from dataclasses import field
+from dataclasses import field, dataclass
+
 
 @dataclass
-class AppWorldPPOConfig(PPOConfig):
+class AppWorldReinforcePlusPlusConfig(GRPOConfig):
     workflow_config: dict = field(default_factory=dict)
 
 os.environ["APPWORLD_ROOT"] = "/mnt/efs/platoon/src/platoon/envs/appworld"
 
 def main(args):
-    config, _ = load_expr_config(args, AppWorldPPOConfig)
-    config: AppWorldPPOConfig
+    config, _ = load_expr_config(args, AppWorldReinforcePlusPlusConfig)
+    config: AppWorldReinforcePlusPlusConfig
 
     rank = int(os.getenv("RANK"))
     tokenizer = load_hf_tokenizer(config.tokenizer_path)
@@ -51,8 +52,6 @@ def main(args):
     # Initialize train engine
     actor = FSDPPPOActor(config=config.actor)
     actor.create_process_group(parallel_strategy=parallel_strategy)
-    critic = FSDPPPOCritic(config=config.critic)
-    critic.create_process_group(parallel_strategy=parallel_strategy)
 
     train_dataset = Dataset.from_list(
         [{"task_id": x} for x in load_task_ids(dataset_name="train")]
@@ -61,7 +60,7 @@ def main(args):
     valid_dataset = Dataset.from_list(
         [{"task_id": x} for x in load_task_ids(dataset_name="dev")]
     )
-    
+
     # Create dataset and dataloaders
     train_dataloader = StatefulDataLoader(
         train_dataset,
@@ -87,14 +86,13 @@ def main(args):
 
     # Initialize inference engine
     rollout = RemoteSGLangEngine(config.rollout)
-    rollout.initialize(train_data_parallel_size=parallel_strategy.dp_size)
+    rollout.initialize(train_data_parallel_size=1) #parallel_strategy.dp_size)
     eval_rollout = RemoteSGLangEngine(deepcopy(config.rollout))
     # NOTE: eval does not have any offpolicyness control
     eval_rollout.config.max_head_offpolicyness = int(1e12)
     eval_rollout.initialize()
 
     actor.initialize(None, ft_spec)
-    critic.initialize(None, ft_spec)
     ref = None
     if config.actor.kl_ctl > 0 and config.ref is not None:
         ref = FSDPPPOActor(config=config.ref)
@@ -105,27 +103,26 @@ def main(args):
     # but `WeightUpdateMeta.from_fsdp_xccl` has to be executed on all ranks
     # due to `engine.get_param_specs()`.
     # Therefore, we create weight update meta on all ranks, then broadcast the one on rank 0.
-    weight_update_meta = [
-        WeightUpdateMeta.from_fsdp_xccl(
-            AllocationMode.from_str(config.allocation_mode), actor
-        )
-    ]
-    dist.broadcast_object_list(weight_update_meta, src=0)
-    weight_update_meta = weight_update_meta[0]
+    # weight_update_meta = [
+    #     WeightUpdateMeta.from_fsdp_xccl(
+    #         AllocationMode.from_str(config.allocation_mode), actor
+    #     )
+    # ]
+    # dist.broadcast_object_list(weight_update_meta, src=0)
+    # weight_update_meta = weight_update_meta[0]
 
-    # weight_update_meta = WeightUpdateMeta.from_disk(
-    #     config.saver.experiment_name,
-    #     config.saver.trial_name,
-    #     config.saver.fileroot,
-    #     use_lora=True,
-    # )
+    weight_update_meta = WeightUpdateMeta.from_disk(
+        config.saver.experiment_name,
+        config.saver.trial_name,
+        config.saver.fileroot,
+        use_lora=True,
+    )
 
     # Create rollout workflow
     if tokenizer.pad_token_id not in config.gconfig.stop_token_ids:
         config.gconfig.stop_token_ids.append(tokenizer.pad_token_id)
     if tokenizer.eos_token_id not in config.gconfig.stop_token_ids:
         config.gconfig.stop_token_ids.append(tokenizer.eos_token_id)
-    
     workflow = AppWorldArealRecursiveWorkflow(
         config=config.workflow_config
     )
@@ -133,15 +130,15 @@ def main(args):
         config=config.workflow_config
     )
 
+
     # Run training.
     saver = Saver(config.saver, ft_spec)
     stats_logger = StatsLogger(config, ft_spec)
     evaluator = Evaluator(config.evaluator, ft_spec)
 
-    engines = {"default": actor, "critic": critic}
     recover_handler = RecoverHandler(config.recover, ft_spec)
     recover_info = recover_handler.load(
-        engines,
+        actor,
         saver,
         evaluator,
         stats_logger,
@@ -195,11 +192,6 @@ def main(args):
         dist.barrier(device_ids=[actor.device.index])
         current_platform.synchronize()
 
-        with stats_tracker.record_timing("critic_values"):
-            values = critic.compute_values(batch)
-            batch["values"] = values
-            log_gpu_stats("critic values")
-
         if config.actor.recompute_logprob or config.actor.use_decoupled_loss:
             with stats_tracker.record_timing("recompute_logp"):
                 logp = actor.compute_logp(batch)
@@ -217,27 +209,11 @@ def main(args):
 
         with (
             stats_tracker.record_timing("train_step"),
-            stats_tracker.scope("ppo_actor"),
+            stats_tracker.scope("grpo_actor"),
         ):
-            actor_stats = actor.ppo_update(batch)
+            stats = actor.ppo_update(batch)
             actor.step_lr_scheduler()
-            log_gpu_stats("ppo actor update")
-
-        with (
-            stats_tracker.record_timing("train_step"),
-            stats_tracker.scope("ppo_critic"),
-        ):
-            critic_stats = critic.ppo_update(batch)
-            critic.step_lr_scheduler()
-            log_gpu_stats("ppo critic update")
-
-        assert len(actor_stats) == len(
-            critic_stats
-        ), "actor and critic should have same number of update steps"
-        stats = [
-            {**actor_stat, **critic_stat}
-            for actor_stat, critic_stat in zip(actor_stats, critic_stats)
-        ]
+            log_gpu_stats("ppo update")
 
         # pause inference for updating weights, save, and evaluation
         rollout.pause()
@@ -252,19 +228,15 @@ def main(args):
             current_platform.synchronize()
 
             actor.set_version(global_step + 1)
-            critic.set_version(global_step + 1)
             rollout.set_version(global_step + 1)
             eval_rollout.set_version(global_step + 1)
 
         with stats_tracker.record_timing("save"):
             saver.save(actor, epoch, step, global_step, tokenizer=tokenizer)
-            saver.save(
-                critic, epoch, step, global_step, tokenizer=tokenizer, name="critic"
-            )
 
         with stats_tracker.record_timing("checkpoint_for_recover"):
             recover_handler.dump(
-                engines,
+                actor,
                 step_info,
                 saver,
                 evaluator,

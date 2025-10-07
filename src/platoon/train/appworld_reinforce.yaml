@@ -1,5 +1,5 @@
-experiment_name: appworld-recursive-ppo
-trial_name: trial0
+experiment_name: appworld-recursive-reinforce++
+trial_name: trialreinforce1
 
 seed: 1
 total_train_epochs: 10
@@ -14,25 +14,16 @@ cluster:
     type: nfs
     nfs_record_root: /mnt/efs/tmp/areal/name_resolve
 
-allocation_mode: sglang.d2p1t1+d6p1t1 #sglang.d4p1t1+d4p1t1
+allocation_mode: sglang.d4p1t1+d4p1t1 #sglang:d2+fsdp:d3c2 #sglang.d2p1t1+d6p1t1
 
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 5 #40
+  max_concurrent_rollouts: 10 #40
   queue_size: null
   consumer_batch_size: ${train_dataset.batch_size}
-  max_head_offpolicyness: 0 #2
+  max_head_offpolicyness: 1
   enable_rollout_tracing: false
-
-workflow_config:
-  model_name: ${actor.path}
-  max_steps_per_rollout: 50
-  output_dir: /mnt/efs/tmp/areal/experiments/trial0
-  verbose: null
-  per_rollout_timeout_seconds: null
-  model_endpoint: null
-  max_parallel_processes: null
 
 gconfig:
   n_samples: 1
@@ -41,17 +32,26 @@ gconfig:
   greedy: false
   temperature: 1.0
 
+workflow_config:
+  model_name: ${actor.path}
+  max_steps_per_rollout: 50
+  output_dir: /mnt/efs/tmp/areal/experiments/trialreinforce1
+  verbose: null
+  per_rollout_timeout_seconds: null
+  model_endpoint: null
+  max_parallel_processes: null
+
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path: /mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-gemma3-4b-recursive_latest
+  path: /mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-qwen3-8b-recursive_latest #Qwen/Qwen2.5-7B-Instruct #/mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-gemma3-4b-recursive_latest
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: true
   dtype: bfloat16
   mb_spec:
-    n_mbs: 1
-    max_tokens_per_mb: null #40000 #10240
+    n_mbs: 10
+    #max_tokens_per_mb: 8000
   optimizer:
     type: adam
     lr: 1.70e-5
@@ -69,43 +69,25 @@ actor:
   reward_scaling: 10.0
   reward_bias: -0.5
   kl_ctl: 0.0
+  kl_estimator: k1
   ppo_n_minibatches: 1
   recompute_logprob: true
   use_decoupled_loss: true
   behav_imp_weight_cap: 5.0
   dynamic_sampling: false
+  reward_norm:
+    mean_level: null
+    std_level: null
+  adv_norm:
+    mean_level: null #batch
+    std_level: null #batch
   max_new_tokens: ${gconfig.max_new_tokens}
   # lora
-  # use_lora: true
-  # peft_type: lora
-  # lora_rank: 32
-  # lora_alpha: 16
-  # target_modules: [all-linear]
-
-critic:
-  is_critic: true
-  gradient_checkpointing: true
-  experiment_name: ${experiment_name}
-  trial_name: ${trial_name}
-  path: Qwen/Qwen2.5-1.5B-Instruct #${actor.path}
-  init_from_scratch: false
-  disable_dropout: true
-  dtype: ${actor.dtype}
-  eps_clip: 0.5
-  ppo_n_minibatches: ${actor.ppo_n_minibatches}
-  mask_no_eos_with_zero: ${actor.mask_no_eos_with_zero}
-  mb_spec:
-    n_mbs: 1
-    max_tokens_per_mb: null #40000 #10240
-  optimizer: ${actor.optimizer}
-  backend: fsdp
-  # lora
-  # use_lora: true
-  # peft_type: lora
-  # lora_rank: 32
-  # lora_alpha: 16
-  # target_modules: [all-linear]
-
+  use_lora: true
+  peft_type: lora
+  lora_rank: 32
+  lora_alpha: 16
+  target_modules: [all-linear]
 
 ref:
   experiment_name: ${experiment_name}
@@ -115,8 +97,8 @@ ref:
   disable_dropout: true
   dtype: ${actor.dtype}
   mb_spec:
-    n_mbs: 1
-    max_tokens_per_mb: null #40000 #10240
+    #n_mbs: 10
+    max_tokens_per_mb: 100000 #8000 #10240
   optimizer: null
   backend: fsdp
 
@@ -130,14 +112,14 @@ sglang:
   context_length: 40000
   mem_fraction_static: 0.8
   # lora
-  # enable_lora: ${actor.use_lora}
-  # max_lora_rank: ${actor.lora_rank}
-  # lora_target_modules: ${actor.target_modules}
-  # schedule_policy: fcfs
+  enable_lora: ${actor.use_lora}
+  max_lora_rank: ${actor.lora_rank}
+  lora_target_modules: ${actor.target_modules}
+  schedule_policy: fcfs
 
 # datasets
 train_dataset:
-  batch_size: 10
+  batch_size: 4
   type: rl
   path: ""
 
