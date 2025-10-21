@@ -1,8 +1,8 @@
-experiment_name: appworld-linear-reinforce
-trial_name: reinforcelinearcustom3
+experiment_name: countdown-reinforce
+trial_name: 0
 
-seed: 343
-total_train_epochs: 50
+seed: 1
+total_train_epochs: 10
 tokenizer_path: ${actor.path}
 async_training: false
 
@@ -14,15 +14,15 @@ cluster:
     type: nfs
     nfs_record_root: /mnt/efs/tmp/areal/name_resolve
 
-allocation_mode: sglang.d4p1t1+d4p1t1 #sglang:d2+fsdp:d3c2 #sglang.d2p1t1+d6p1t1
+allocation_mode: sglang.d4p1t1+d4p1t1
 
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 24
+  max_concurrent_rollouts: 64
   queue_size: null
   consumer_batch_size: ${train_dataset.batch_size}
-  max_head_offpolicyness: 0 #1
+  max_head_offpolicyness: 0
   enable_rollout_tracing: false
   shuffle_cross_task: true
   ensure_batch_divisible_by: 4
@@ -36,8 +36,8 @@ gconfig: #TODO: Remove this from config and use workflow_config as the source of
 
 workflow_config:
   model_name: ${actor.path}
-  max_steps_per_rollout: 50
-  output_dir: /mnt/efs/tmp/areal/experiments/reinforcelinearcustom3
+  max_steps_per_rollout: 1
+  output_dir: /mnt/efs/tmp/areal/experiments/countdown-reinforce-0
   verbose: null
   per_rollout_timeout_seconds: null
   model_endpoint: null
@@ -46,7 +46,7 @@ workflow_config:
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path: /mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-qwen3-8b-linear_latest/checkpoint-142 #/mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-qwen3-8b-recursive_latest #Qwen/Qwen2.5-7B-Instruct #/mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-gemma3-4b-recursive_latest
+  path: Qwen/Qwen2.5-3B-Instruct
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: true
@@ -55,7 +55,7 @@ actor:
     max_tokens_per_mb: 45000
   optimizer:
     type: adam
-    lr: 1.70e-5
+    lr: 5e-6
     weight_decay: 0.017
     beta1: 0.9
     beta2: 0.999
@@ -83,12 +83,6 @@ actor:
     mean_level: null #batch
     std_level: null #batch
   max_new_tokens: ${gconfig.max_new_tokens}
-  # lora
-  # use_lora: true
-  # peft_type: lora
-  # lora_rank: 32
-  # lora_alpha: 16
-  # target_modules: [all-linear]
 
 ref: # This is not used because kl_ctl is 0.
   experiment_name: ${experiment_name}
@@ -111,20 +105,15 @@ sglang:
   max_running_requests: null
   context_length: 40000
   mem_fraction_static: 0.8
-  # lora
-  # enable_lora: ${actor.use_lora}
-  # max_lora_rank: ${actor.lora_rank}
-  # lora_target_modules: ${actor.target_modules}
-  # schedule_policy: fcfs
 
 # datasets
 train_dataset:
-  batch_size: 24
+  batch_size: 256
   type: rl
   path: ""
 
 valid_dataset:
-  batch_size: 24
+  batch_size: 256
   type: rl
   path: ""
 
@@ -151,7 +140,7 @@ evaluator:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: 1
-  freq_steps: null
+  freq_steps: 10
   freq_secs: null
 
 stats_logger:

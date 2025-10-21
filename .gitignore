@@ -213,3 +213,8 @@ results_*/
 logs.md
 
 *.code-workspace
+
+**.pt
+logs*.md
+.vscode/
+countdown*.md

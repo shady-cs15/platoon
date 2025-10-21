@@ -3,11 +3,19 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Protocol, runtime_checkable
 
+from platoon.agents.actions.common import finish
 from platoon.envs.base import Task
+from IPython.terminal.embed import InteractiveShellEmbed
+from traitlets.config.loader import Config
+import sys
+import ast
+import asyncio
+from typing import Callable, Sequence
 
-from .types import CodeExecutor, ForkableCodeExecutor, CodeActObservation, CodeActAction
+from .types import CodeExecutor, ForkableCodeExecutor, CodeActObservation, CodeActAction, CodeActStep
 from platoon.episode.context import finish_message
 from platoon.episode.context import current_trajectory_collection, current_trajectory, error_message
+from platoon.utils.ipython_shell import ShellCapture, strip_ansi_escape_sequences
 
 
 @runtime_checkable
@@ -97,3 +105,67 @@ class CodeActEnv(Protocol):
             raise ValueError("CodeExecutor is not forkable. "
             "Either implement fork() for your CodeExecutor or implement a new ForkableEnv for this task."
             )
+
+
+class IPythonCodeExecutor(CodeExecutor):
+    # TODO: Separate actions and modules? Use this info to build action space description?
+    def __init__(self, task: Task, actions: Sequence[Callable] = (finish, asyncio), timeout_seconds: int = 30):
+        self.task = task
+        self.actions = actions
+        self.shell = self._create_shell()
+        self.timeout_seconds = timeout_seconds
+        
+    def _create_shell(self) -> InteractiveShellEmbed:
+        original_excepthook = sys.excepthook
+        config = Config()
+        # history keeps files open preventing making > ~50 envs
+        config.HistoryManager.enabled = False 
+        shell = InteractiveShellEmbed(config=config)
+        sys.excepthook = original_excepthook # prevents it from changing traceback format globally
+        for action in self.actions:
+            shell.user_ns[action.__name__] = action
+        return shell
+
+    # TODO: Can make this more robust and have better error handling + sandboxing.
+    async def run(self, code: str) -> CodeActStep:
+        code = code.strip()
+
+        try:
+            ast.parse(code)
+        except SyntaxError as e:
+            message = (
+                "Execution failed. Traceback:\n"
+                + "Syntax error in line:\n"
+                + (e.text or "").rstrip()
+                + "\n"
+                + "Message: "
+                + e.msg
+            )
+            return CodeActStep(code=code, error=message)
+
+        if not code:
+            return CodeActStep(code=code, error="No code available to execute.")
+
+        with ShellCapture() as capture:
+            await self.shell.run_cell_async(code, timeout_seconds=self.timeout_seconds)
+
+        cap_stdout = strip_ansi_escape_sequences(capture.pop_stdout())
+        cap_stderr = strip_ansi_escape_sequences(capture.pop_stderr())
+
+        # TODO: This might cause unexpected filtering of outputs.
+        # Guard against empty stdout before indexing first line
+        first_line = cap_stdout.splitlines()[0] if cap_stdout.splitlines() else ""
+        if cap_stdout.startswith("Out[") or ("[?7hOut[1]:" in first_line):
+            cap_stdout = "".join(cap_stdout.split(":")[1:]) 
+            
+        return CodeActStep(
+            code=code,
+            output=cap_stdout,
+            error=cap_stderr,
+        )
+
+    async def describe_action_space(self) -> str:
+        raise NotImplementedError("IPythonCodeExecutor does not yet implement describe_action_space. Please implement it in your subclass.")
+
+    async def reset(self) -> CodeExecutor:
+        return self

@@ -15,12 +15,14 @@ from platoon.episode.context import current_trajectory
 # --- Lightweight RPC server and proxy for engine.agenerate to avoid pickling non-serializable engine ---
 import asyncio
 import json
+import os
 import socket
 import threading
 from typing import Dict
 
 import aiohttp
 from aiohttp import web
+import traceback
 
 from areal.api.cli_args import GenerationHyperparameters
 from areal.api.io_struct import ModelRequest, ModelResponse
@@ -63,43 +65,89 @@ class _EngineRPCServer:
             return web.json_response({"ok": True})
 
         async def agenerate_handler(request: web.Request) -> web.Response:
-            payload = await request.json()
-            # Reconstruct GenerationHyperparameters
-            gcfg_dict = payload["gconfig"]
-            gconfig = GenerationHyperparameters(
-                n_samples=gcfg_dict.get("n_samples", 1),
-                temperature=gcfg_dict.get("temperature", 0.0),
-                max_new_tokens=gcfg_dict.get("max_new_tokens", 1),
-                top_p=gcfg_dict.get("top_p", 1.0),
-                top_k=gcfg_dict.get("top_k", 0),
-                stop=gcfg_dict.get("stop"),
-                greedy=gcfg_dict.get("greedy", False),
-                frequency_penalty=gcfg_dict.get("frequency_penalty", 0.0),
-                stop_token_ids=gcfg_dict.get("stop_token_ids", []),
-                max_tokens=gcfg_dict.get("max_tokens", 16384),
-            )
+            try:
+                payload = await request.json()
+                # Reconstruct GenerationHyperparameters
+                gcfg_dict = payload["gconfig"]
+                gconfig = GenerationHyperparameters(
+                    n_samples=gcfg_dict.get("n_samples", 1),
+                    temperature=gcfg_dict.get("temperature", 0.0),
+                    max_new_tokens=gcfg_dict.get("max_new_tokens", 1),
+                    top_p=gcfg_dict.get("top_p", 1.0),
+                    top_k=gcfg_dict.get("top_k", 0),
+                    stop=gcfg_dict.get("stop"),
+                    greedy=gcfg_dict.get("greedy", False),
+                    frequency_penalty=gcfg_dict.get("frequency_penalty", 0.0),
+                    stop_token_ids=gcfg_dict.get("stop_token_ids", []),
+                    max_tokens=gcfg_dict.get("max_tokens", 16384),
+                )
 
-            # Build ModelRequest. We do not forward tokenizer/processor to avoid non-serializables.
-            mreq = ModelRequest(
-                input_ids=payload["input_ids"],
-                gconfig=gconfig,
-                rid=payload.get("rid"),
-                metadata=None,
-                tokenizer=None,
-            )
+                # Build ModelRequest. We do not forward tokenizer/processor to avoid non-serializables.
+                mreq = ModelRequest(
+                    input_ids=payload["input_ids"],
+                    gconfig=gconfig,
+                    rid=payload.get("rid"),
+                    metadata=None,
+                    tokenizer=None,
+                )
 
-            resp: ModelResponse = await self._engine.agenerate(mreq)
-            # Serialize response to JSON-serializable dict
-            response_payload = {
-                "input_tokens": resp.input_tokens,
-                "output_tokens": resp.output_tokens,
-                "output_logprobs": resp.output_logprobs,
-                "output_versions": resp.output_versions,
-                "stop_reason": resp.stop_reason,
-                "latency": resp.latency,
-                "ttft": getattr(resp, "ttft", resp.latency),
-            }
-            return web.json_response(response_payload)
+                resp: ModelResponse = await self._engine.agenerate(mreq)
+                # Serialize response to JSON-serializable dict
+                response_payload = {
+                    "input_tokens": resp.input_tokens,
+                    "output_tokens": resp.output_tokens,
+                    "output_logprobs": resp.output_logprobs,
+                    "output_versions": resp.output_versions,
+                    "stop_reason": resp.stop_reason,
+                    "latency": resp.latency,
+                    "ttft": getattr(resp, "ttft", resp.latency),
+                }
+                return web.json_response(response_payload)
+            except asyncio.TimeoutError:
+                rid = payload.get("rid") if "payload" in locals() and isinstance(payload, dict) else None
+                return web.json_response(
+                    {
+                        "error": "generation_timeout",
+                        "error_type": "TimeoutError",
+                        "detail": "engine.agenerate timed out",
+                        "rid": rid,
+                    },
+                    status=504,
+                )
+            except KeyError as e:
+                rid = payload.get("rid") if "payload" in locals() and isinstance(payload, dict) else None
+                return web.json_response(
+                    {
+                        "error": "bad_request",
+                        "error_type": "KeyError",
+                        "detail": f"missing field: {e}",
+                        "rid": rid,
+                    },
+                    status=400,
+                )
+            except ValueError as e:
+                rid = payload.get("rid") if "payload" in locals() and isinstance(payload, dict) else None
+                return web.json_response(
+                    {
+                        "error": "bad_request",
+                        "error_type": "ValueError",
+                        "detail": str(e),
+                        "rid": rid,
+                    },
+                    status=400,
+                )
+            except Exception as e:
+                # Avoid leaking internals; provide minimal error info
+                rid = payload.get("rid") if "payload" in locals() and isinstance(payload, dict) else None
+                body = {
+                    "error": "server_error",
+                    "error_type": e.__class__.__name__,
+                    "detail": str(e),
+                    "rid": rid,
+                }
+                if os.getenv("AREAL_RPC_DEBUG", "0") in ("1", "true", "True"):
+                    body["traceback"] = traceback.format_exc()
+                return web.json_response(body, status=500)
 
         app.router.add_get("/health", health_handler)
         app.router.add_post("/agenerate", agenerate_handler)
@@ -174,9 +222,29 @@ class _RPCProxyEngine:
 
         timeout = aiohttp.ClientTimeout(total=self.request_timeout)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(f"{self.base_url}/agenerate", json=payload) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
+            try:
+                async with session.post(f"{self.base_url}/agenerate", json=payload) as resp:
+                    if resp.status >= 400:
+                        # Try to parse error payload
+                        try:
+                            err = await resp.json()
+                        except Exception:
+                            text = await resp.text()
+                            err = {"error": "http_error", "detail": text}
+                        # Map common statuses
+                        err_type = err.get("error_type") or err.get("error")
+                        detail = err.get("detail") or err
+                        rid = err.get("rid")
+                        if resp.status == 400:
+                            raise ValueError(f"Bad request [{err_type}] rid={rid}: {detail}")
+                        if resp.status == 504:
+                            raise asyncio.TimeoutError(f"Server timeout [{err_type}] rid={rid}: {detail}")
+                        raise RuntimeError(f"Server error {resp.status} [{err_type}] rid={rid}: {detail}")
+                    data = await resp.json()
+            except asyncio.TimeoutError:
+                raise
+            except aiohttp.ClientError as e:
+                raise RuntimeError(f"HTTP client error: {e}")
 
         # Rebuild ModelResponse. We do not set tokenizer/processor here.
         return ModelResponse(

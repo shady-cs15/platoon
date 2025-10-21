@@ -28,9 +28,9 @@ from areal.utils.hf_utils import load_hf_tokenizer
 from areal.utils.recover import RecoverHandler
 from areal.utils.saver import Saver
 from areal.utils.stats_logger import StatsLogger
-from appworld import load_task_ids
+from platoon.envs.countdown.tasks import get_task_ids
 from datasets import Dataset
-from platoon.agents.appworld.areal_workflow import AppWorldArealWorkflow, AppWorldArealRecursiveWorkflow
+from platoon.agents.countdown.areal_workflow import CountDownArealWorkflow
 from dataclasses import field, dataclass
 from areal.api.cli_args import InferenceEngineConfig
 from areal.utils.data import concat_padded_tensors
@@ -249,7 +249,7 @@ def main(args):
     dp_world_size = actor.data_parallel_world_size
     
 
-    train_ids = load_task_ids(dataset_name="train")
+    train_ids = get_task_ids(split="train")
     train_index_remainder = len(train_ids) % dp_world_size
     if train_index_remainder != 0:
         train_ids = train_ids[:-train_index_remainder]
@@ -257,7 +257,7 @@ def main(args):
     train_ids = [x for i, x in enumerate(train_ids) if i % dp_world_size == dp_rank]
     train_dataset = Dataset.from_list([{ "task_id": x } for x in train_ids])
 
-    valid_ids = load_task_ids(dataset_name="dev")
+    valid_ids = get_task_ids(split="val")
     valid_index_remainder = len(valid_ids) % dp_world_size
     if valid_index_remainder != 0:
         valid_ids = valid_ids[:-valid_index_remainder]
@@ -327,10 +327,10 @@ def main(args):
         config.gconfig.stop_token_ids.append(tokenizer.pad_token_id)
     if tokenizer.eos_token_id not in config.gconfig.stop_token_ids:
         config.gconfig.stop_token_ids.append(tokenizer.eos_token_id)
-    workflow = AppWorldArealWorkflow(
+    workflow = CountDownArealWorkflow(
         config=config.workflow_config
     )
-    eval_workflow = AppWorldArealWorkflow(
+    eval_workflow = CountDownArealWorkflow(
         config=config.workflow_config
     )
 
