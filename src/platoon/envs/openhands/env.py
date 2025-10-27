@@ -1,0 +1,96 @@
+
+
+from __future__ import annotations
+
+from platoon.envs.base import Task
+from platoon.envs.openhands.types import OpenHandsObservation
+from openhands.sdk.conversation.base import BaseConversation
+from openhands.sdk.agent.base import AgentBase
+from openhands.sdk.workspace.base import BaseWorkspace
+from copy import deepcopy
+from openhands.sdk.conversation.conversation import Conversation
+from platoon.episode.context import current_trajectory_collection, current_trajectory, finish_message, error_message
+from platoon.utils.openhands_utils import get_obs_for_last_action
+from platoon.envs.openhands.types import OpenHandsTrajectoryStep
+from platoon.utils.openhands_utils import is_finished
+from platoon.envs.openhands.types import OpenHandsAction
+from openhands.sdk.conversation.state import AgentExecutionStatus
+import threading
+import asyncio
+
+class OpenHandsEnv:
+    def __init__(self, task: Task, agent: AgentBase, workspace: str | BaseWorkspace):
+        self._task = task
+        self._agent = agent
+        self._workspace = workspace
+    
+    async def reset(self) -> OpenHandsObservation:
+        self._conversation: BaseConversation = Conversation(agent=self._agent, workspace=self._workspace)
+        self._state = OpenHandsObservation(task=self._task, conversation_state=self._conversation.state)
+        self._conversation.send_message(self._task.goal)
+        threading.Thread(target=self._conversation.run, daemon=True).start() # NOTE: Run the conversation in a separate thread to avoid blocking the main thread.
+
+        traj_collection = current_trajectory_collection.get()
+        traj = current_trajectory.get()
+        traj_collection.set_trajectory_task(traj.id, self._state.task)
+        traj.reward = 0.0
+        obs_events = get_obs_for_last_action(self._state.conversation_state, None)
+        while not obs_events:
+            await asyncio.sleep(1)
+            obs_events = get_obs_for_last_action(self._state.conversation_state, None)
+        traj_collection.add_trajectory_step(traj.id, OpenHandsTrajectoryStep(
+            observation_events=obs_events,
+        ))
+        self._state.last_step_observation_id = obs_events[-1].id
+        return await self.observe()
+
+    async def evaluate(self) -> tuple[float, dict]:
+        return 0., {}
+
+    async def step(self, action: OpenHandsAction) -> OpenHandsObservation:
+        self._state.last_step_action_id = action.action_events[-1].id
+        obs_events = get_obs_for_last_action(self._state.conversation_state, self._state.last_step_action_id)
+        while not obs_events:
+            await asyncio.sleep(1)
+            obs_events = get_obs_for_last_action(self._state.conversation_state, self._state.last_step_action_id)
+        self._state.last_step_observation_id = obs_events[-1].id
+        step = OpenHandsTrajectoryStep(
+            action_events=action,
+            observation_events=obs_events,
+        )
+        step.misc['action_misc'] = action.misc
+        step.misc['reward_misc'] = await self.evaluate()
+        self._state.reward += step.reward
+        
+        if is_finished(self._state.conversation_state):
+            self._state.finished = True
+            finish_message.set(self._conversation.agent_final_response())
+            self._state.misc["finish_message"] = finish_message.get()
+            if self._state.conversation_state.agent_status == AgentExecutionStatus.STUCK:
+                error_message.set("Agent got stuck")
+                self._state.misc["error_message"] = error_message.get()
+
+        traj_collection = current_trajectory_collection.get()
+        traj = current_trajectory.get()
+        traj_collection.add_trajectory_step(traj.id, step)
+        if self._state.finished:
+            traj.reward = self._state.reward
+        return await self.observe()
+
+    
+    async def close(self) -> None:
+        self._conversation.close()
+
+    # TODO: Consider adding a return_copy option here.
+    async def observe(self) -> OpenHandsObservation:
+        return self._state
+    
+    @property
+    def task(self) -> Task:
+        return self._task
+
+    async def fork(self, task: Task) -> OpenHandsEnv:
+        # NOTE: The agent might have state, during the copy, but should be reinitialized before use withenv.reset().
+        # TODO: Need to double-check that this works for remote agent server case.
+        # TODO: Consider explicitly resetting the agent here manually.
+        return type(self)(task=task, agent=deepcopy(self._agent), workspace=self._workspace)

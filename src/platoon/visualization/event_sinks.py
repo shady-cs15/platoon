@@ -9,11 +9,14 @@ from typing import Any, Dict
 
 from platoon.episode.trajectory import TrajectoryEventHandler, Trajectory
 from platoon.envs.base import Task
+from pydantic import BaseModel # TODO: Add pydantic as explicit dependency?
 
 
 def _to_jsonable(obj: Any) -> Any:
     if is_dataclass(obj):
-        return asdict(obj)
+        return _to_jsonable(asdict(obj))
+    if isinstance(obj, BaseModel):
+        return obj.model_dump(mode="json")
     if isinstance(obj, (str, int, float, bool)) or obj is None:
         return obj
     if isinstance(obj, dict):

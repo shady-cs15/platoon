@@ -35,6 +35,12 @@ dev = [
 appworld = [
     "appworld"
 ]
+openhands = [
+    "openhands-sdk",
+    "openhands-tools",
+    "openhands-workspace",
+    "openhands-agent-server"
+]
 interactive = [
     "notebook>=7.4.4",
 ]

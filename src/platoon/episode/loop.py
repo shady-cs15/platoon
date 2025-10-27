@@ -39,15 +39,17 @@ async def run_episode(agent: Agent, env: Env, verbose: bool = False, timeout: in
         if verbose:
             print(detailed_msg)
         error_message.set(detailed_msg)
-    
-    # Finalize trajectory and emit a finish event to sinks
-    traj_collection = current_trajectory_collection.get()
-    traj = current_trajectory.get()
-    traj.error_message = error_message.get()
-    traj.finish_message = finish_message.get()
-    # TODO: We could move out trajectory finish logic (adding up rewards, setting finish message, etc.) from env logic to here.
-    traj_collection.finish_trajectory(traj.id)
-    return traj
+    finally:
+        await agent.close()
+        await env.close()
+        # Finalize trajectory and emit a finish event to sinks
+        traj_collection = current_trajectory_collection.get()
+        traj = current_trajectory.get()
+        traj.error_message = error_message.get()
+        traj.finish_message = finish_message.get()
+        # TODO: We could move out trajectory finish logic (adding up rewards, setting finish message, etc.) from env logic to here.
+        traj_collection.finish_trajectory(traj.id)
+        return traj
 
 def set_context_vars(agent: Agent, env: Env):
     finish_message.set(None)
