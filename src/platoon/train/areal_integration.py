@@ -34,6 +34,9 @@ areal_llm_clients: ContextVar[dict[str, ArealLLMClient]] = ContextVar("areal_llm
 # without storing the non-picklable engine object on the client.
 _ENGINE_RPC_SERVERS_BY_ID: Dict[int, "_EngineRPCServer"] = {}
 
+# Registry for OpenAI-compatible servers keyed by (engine key, model)
+_OPENAI_COMPAT_SERVERS: Dict[tuple, "_OpenAICompatServer"] = {}
+
 
 def _find_free_port() -> int:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -184,6 +187,182 @@ class _EngineRPCServer:
         self._thread = None
 
 
+class _OpenAICompatServer:
+    """Lightweight server exposing an OpenAI-compatible Chat Completions endpoint.
+
+    This server forwards requests to an ArealOpenAI client backed by the engine's
+    RPC endpoint (started on demand if an engine instance is provided).
+    """
+    def __init__(
+        self,
+        engine: Any,
+        model: str,
+        host: str = "127.0.0.1",
+        port: int | None = None,
+    ):
+        if not hasattr(engine, "agenerate"):
+            raise ValueError("engine must implement agenerate(ModelRequest) -> ModelResponse (async).")
+
+        self._host = host
+        self._port = port or _find_free_port()
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._runner: web.AppRunner | None = None
+        self._started = threading.Event()
+
+        # Backing Areal client uses the provided engine directly (actual or proxy)
+        tokenizer = load_hf_tokenizer(model)
+        self._areal_client = ArealOpenAI(engine=engine, tokenizer=tokenizer)
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self._host}:{self._port}"
+
+    async def _create_app(self) -> web.Application:
+        app = web.Application()
+
+        async def health_handler(_request: web.Request) -> web.Response:
+            return web.json_response({"ok": True})
+
+        async def chat_completions_handler(request: web.Request) -> web.Response:
+            try:
+                payload = await request.json()
+
+                # Streaming not supported in this lightweight server
+                if payload.get("stream"):
+                    return web.json_response(
+                        {
+                            "error": {
+                                "type": "invalid_request_error",
+                                "message": "stream=true is not supported by this server",
+                            }
+                        },
+                        status=400,
+                    )
+
+                # Extract core fields; drop/ignore model and stop to align with Areal client usage
+                messages = payload.get("messages")
+                if not isinstance(messages, list):
+                    return web.json_response(
+                        {
+                            "error": {
+                                "type": "invalid_request_error",
+                                "message": "'messages' must be a list",
+                            }
+                        },
+                        status=400,
+                    )
+
+                # Prepare kwargs, forwarding common OpenAI options where possible
+                forwarded = dict(payload)
+                forwarded.pop("model", None)
+                forwarded.pop("stream", None)
+                forwarded.pop("stop", None)
+
+                temperature = forwarded.pop("temperature", 0.7)
+                max_tokens = forwarded.pop("max_tokens", None)
+
+                # Call ArealOpenAI compat client
+                completion = await self._areal_client.chat.completions.create(
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **forwarded,
+                )
+
+                # Convert typed response to JSON-serializable dict
+                try:
+                    body = completion.model_dump(exclude_none=True)  # type: ignore[attr-defined]
+                except Exception:
+                    try:
+                        body = json.loads(completion.json())  # type: ignore[attr-defined]
+                    except Exception:
+                        body = completion  # Best effort
+
+                return web.json_response(body)
+            except asyncio.TimeoutError:
+                return web.json_response(
+                    {
+                        "error": {
+                            "type": "timeout_error",
+                            "message": "chat completion timed out",
+                        }
+                    },
+                    status=504,
+                )
+            except Exception as e:
+                body = {
+                    "error": {
+                        "type": e.__class__.__name__,
+                        "message": str(e),
+                    }
+                }
+                if os.getenv("AREAL_RPC_DEBUG", "0") in ("1", "true", "True"):
+                    body["traceback"] = traceback.format_exc()
+                return web.json_response(body, status=500)
+
+        app.router.add_get("/health", health_handler)
+        app.router.add_post("/v1/chat/completions", chat_completions_handler)
+        return app
+
+    def _run(self):
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        app = self._loop.run_until_complete(self._create_app())
+        self._runner = web.AppRunner(app)
+        self._loop.run_until_complete(self._runner.setup())
+        site = web.TCPSite(self._runner, self._host, self._port)
+        self._loop.run_until_complete(site.start())
+        self._started.set()
+        try:
+            self._loop.run_forever()
+        finally:
+            self._loop.run_until_complete(self._runner.cleanup())
+            self._loop.close()
+
+    def start(self):
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._run, name=f"OpenAICompatServer:{self._port}", daemon=True)
+        self._thread.start()
+        self._started.wait(timeout=5.0)
+
+    def stop(self):
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread is not None:
+            self._thread.join(timeout=5.0)
+        self._thread = None
+
+
+def get_or_start_openai_compat_server(
+    engine: Any,
+    model: str,
+    host: str = "127.0.0.1",
+    port: int | None = None,
+) -> str:
+    """Start (or reuse) an OpenAI-compatible Chat Completions server and return base URL.
+
+    Reuses a single server per (engine instance, model) within the process.
+    The provided engine can be a real engine or a proxy implementing `agenerate`.
+    """
+    if not hasattr(engine, "agenerate"):
+        raise ValueError("engine must implement agenerate(ModelRequest) -> ModelResponse (async).")
+
+    key = ((id(engine), "engine"), model)
+    if key in _OPENAI_COMPAT_SERVERS:
+        return _OPENAI_COMPAT_SERVERS[key].base_url
+
+    server = _OpenAICompatServer(
+        engine=engine,
+        model=model,
+        host=host,
+        port=port,
+    )
+    server.start()
+    _OPENAI_COMPAT_SERVERS[key] = server
+    return server.base_url
+
 def _get_or_start_engine_server(engine) -> str:
     key = id(engine)
     if key in _ENGINE_RPC_SERVERS_BY_ID:
@@ -278,8 +457,8 @@ class ArealLLMClient(LLMClient): #TODO: Decide if we want to add this to create_
 
         # Keep only the base_url (picklable) and a proxy engine used by ArealOpenAI
         self.engine_base_url = base_url
-        proxy_engine = _RPCProxyEngine(base_url=base_url)
-        self.async_client = ArealOpenAI(engine=proxy_engine, tokenizer=self.tokenizer)
+        self.proxy_engine = _RPCProxyEngine(base_url=base_url)
+        self.async_client = ArealOpenAI(engine=self.proxy_engine, tokenizer=self.tokenizer)
 
         # Register for event sink lookup
         curr_traj=current_trajectory.get(None)

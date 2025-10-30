@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from openhands.sdk.event.llm_convertible.action import ActionEvent
 from platoon.envs.base import Task
-from src.platoon.envs.openhands.types import OpenHandsObservation
-from src.platoon.utils.openhands_utils import get_actions_for_last_obs
+from platoon.envs.openhands.types import OpenHandsObservation
+from platoon.utils.openhands_utils import get_actions_for_last_obs
 from copy import deepcopy
-from src.platoon.envs.openhands.types import OpenHandsAction
+from platoon.envs.openhands.types import OpenHandsAction
 from platoon.utils.openhands_utils import is_finished
 
 
@@ -27,7 +26,10 @@ class OpenHandsAgent:
             )
         
         action = OpenHandsAction(action_events=step_actions)
-        action.misc['completion_id'] = step_actions[-1].llm_response_id
+
+        if step_actions:
+            action.misc['completion_id'] = step_actions[-1].llm_response_id
+
         # TODO: Consider logging usage and model here to be consistent with CodeActAgent.
         # Although, this info is probably already logged by OpenHands in the events.
         return action
