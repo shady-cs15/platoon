@@ -1,5 +1,5 @@
 from platoon.train.areal_integration import ArealLLMClient
-from platoon.agents.countdown.rollout import run_single_rollout_process
+from platoon.agents.code_issue_localization.rollout import run_single_rollout_process
 from areal.utils.data import concat_padded_tensors
 
 import asyncio
@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 import multiprocessing as mp
 import torch
 
-class CountDownArealWorkflow:
+class CodeIssueLocalizationArealWorkflow:
     def __init__(self, config: dict):
         self.config = config
         
@@ -18,9 +18,8 @@ class CountDownArealWorkflow:
         
         config = deepcopy(self.config)
         config['llm_client'] = client # TODO: Need to think of a more explicit arg passing story.
-        task = data['task']
         
-        args = (task, config)
+        args = (data, config)
         # Use spawn context to avoid forking when AReaL's workflow thread/event loop is active
         with ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn")) as executor:
             results = await loop.run_in_executor(executor, run_single_rollout_process, args)

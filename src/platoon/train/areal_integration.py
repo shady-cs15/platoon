@@ -38,6 +38,16 @@ _ENGINE_RPC_SERVERS_BY_ID: Dict[int, "_EngineRPCServer"] = {}
 _OPENAI_COMPAT_SERVERS: Dict[tuple, "_OpenAICompatServer"] = {}
 
 
+def flatten_messages(messages: list[dict]):
+    flattened_messages = []
+    for message in messages:
+        role = message['role']
+        text = '\n\n'.join(c['text'] for c in message['content'])
+        flattened_messages.append({'role': role, 'content': text})
+    return flattened_messages
+
+
+
 def _find_free_port() -> int:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -258,13 +268,54 @@ class _OpenAICompatServer:
                 forwarded.pop("model", None)
                 forwarded.pop("stream", None)
                 forwarded.pop("stop", None)
+                forwarded.pop("messages")
 
                 temperature = forwarded.pop("temperature", 0.7)
                 max_tokens = forwarded.pop("max_tokens", None)
 
+                # Build lightweight request context for clearer error messages
+                def _safe_last_message_len(objs):
+                    try:
+                        last = objs[-1]
+                        content = last.get("content") if isinstance(last, dict) else None
+                        if isinstance(content, str):
+                            return len(content)
+                        if isinstance(content, list):
+                            total = 0
+                            for part in content:
+                                if isinstance(part, dict):
+                                    total += len(str(part.get("text", "")))
+                            return total
+                        return None
+                    except Exception:
+                        return None
+
+                request_context = {
+                    "num_messages": len(messages) if isinstance(messages, list) else None,
+                    "last_message_role": (messages[-1].get("role") if isinstance(messages, list) and messages and isinstance(messages[-1], dict) else None),
+                    "last_message_chars": _safe_last_message_len(messages) if isinstance(messages, list) and messages else None,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+
                 # Call ArealOpenAI compat client
+                # try:
+                #     flattened_messages = flatten_messages(messages)
+                # except Exception as fm_err:
+                #     body = {
+                #         "error": {
+                #             "type": "invalid_request_error",
+                #             "message": f"invalid messages format: {fm_err}",
+                #             "param": "messages",
+                #             "context": request_context,
+                #         }
+                #     }
+                #     if os.getenv("AREAL_RPC_DEBUG", "0") in ("1", "true", "True"):
+                #         body["traceback"] = traceback.format_exc()
+                #     return web.json_response(body, status=400)
+
                 completion = await self._areal_client.chat.completions.create(
-                    messages=messages,
+                    messages=messages,#flattened_messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     **forwarded,
@@ -281,28 +332,63 @@ class _OpenAICompatServer:
 
                 return web.json_response(body)
             except asyncio.TimeoutError:
-                return web.json_response(
-                    {
-                        "error": {
-                            "type": "timeout_error",
-                            "message": "chat completion timed out",
-                        }
-                    },
-                    status=504,
-                )
-            except Exception as e:
                 body = {
                     "error": {
-                        "type": e.__class__.__name__,
-                        "message": str(e),
+                        "type": "timeout_error",
+                        "message": "chat completion timed out",
+                        "context": locals().get("request_context", {}),
                     }
                 }
                 if os.getenv("AREAL_RPC_DEBUG", "0") in ("1", "true", "True"):
                     body["traceback"] = traceback.format_exc()
-                return web.json_response(body, status=500)
+                return web.json_response(body, status=504)
+            except (KeyError, TypeError, ValueError) as e:
+                # Surface invalid request details with context
+                param = None
+                if isinstance(e, KeyError):
+                    try:
+                        param = str(e)
+                    except Exception:
+                        param = None
+                body = {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "message": str(e),
+                        "param": param,
+                        "context": locals().get("request_context", {}),
+                    }
+                }
+                if os.getenv("AREAL_RPC_DEBUG", "0") in ("1", "true", "True"):
+                    body["traceback"] = traceback.format_exc()
+                return web.json_response(body, status=400)
+            except Exception as e:
+                # Provide richer server error details while hiding internals by default
+                err_type = getattr(e, "type", e.__class__.__name__)
+                status = getattr(e, "status", 500)
+                try:
+                    status = int(status)
+                except Exception:
+                    status = 500
+                error_obj = {
+                    "type": err_type,
+                    "message": str(e),
+                    "context": locals().get("request_context", {}),
+                }
+                err_code = getattr(e, "code", None)
+                if err_code is not None:
+                    error_obj["code"] = err_code
+                if getattr(e, "__cause__", None) is not None:
+                    error_obj["cause"] = f"{e.__cause__.__class__.__name__}: {e.__cause__}"
+                body = {"error": error_obj}
+                if os.getenv("AREAL_RPC_DEBUG", "0") in ("1", "true", "True"):
+                    body["traceback"] = traceback.format_exc()
+                # Map common transient statuses if provided; otherwise 500
+                if status not in (400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504):
+                    status = 500
+                return web.json_response(body, status=status)
 
         app.router.add_get("/health", health_handler)
-        app.router.add_post("/v1/chat/completions", chat_completions_handler)
+        app.router.add_post("/chat/completions", chat_completions_handler)
         return app
 
     def _run(self):
@@ -478,8 +564,8 @@ class ArealLLMClient(LLMClient): #TODO: Decide if we want to add this to create_
         self.model = state["model"]
         self.engine_base_url = state["engine_base_url"]
         self.tokenizer = load_hf_tokenizer(self.model)
-        proxy_engine = _RPCProxyEngine(base_url=self.engine_base_url)
-        self.async_client = ArealOpenAI(engine=proxy_engine, tokenizer=self.tokenizer)
+        self.proxy_engine = _RPCProxyEngine(base_url=self.engine_base_url)
+        self.async_client = ArealOpenAI(engine=self.proxy_engine, tokenizer=self.tokenizer)
         # Re-register for event sink lookup in the new process
         curr_traj=current_trajectory.get(None)
         if curr_traj is not None:
@@ -513,7 +599,7 @@ class ArealLLMClient(LLMClient): #TODO: Decide if we want to add this to create_
         return await self.async_client.chat.completions.create(
             messages=messages,
             temperature=temperature,
-            max_tokens=40000, #TODO: hack. max_tokens,
+            max_tokens=2000, #40000, #TODO: hack. max_tokens,
             #max_completion_tokens=1024, # TODO: Make this configurable, temp hack!
             **kwargs,
         )
@@ -533,7 +619,7 @@ class ArealEventSink(TrajectoryEventHandler):
     def on_trajectory_step_added(self, trajectory: Trajectory, step: TrajectoryStep) -> None:
         # Certain steps may be system generated rather than LLM generated.
         # We skip these as we don't need to train on these.
-        if not 'completion_id' in step.misc['action_misc']: 
+        if not 'action_misc' in step.misc or not 'completion_id' in step.misc['action_misc']: 
             return
         
         completion_id = step.misc['action_misc']['completion_id']

@@ -1,6 +1,7 @@
 from platoon.envs.openhands.env import OpenHandsEnv
 from platoon.utils.openhands_utils import is_finished
 import ast
+from openhands.sdk.conversation import get_agent_final_response
 
 def f1_reward_function(predicted_files, true_files):
     pred, true = set(predicted_files), set(true_files)
@@ -19,7 +20,7 @@ def reward_function(final_message, instance):
 class CodeIssueLocalizationEnv(OpenHandsEnv):
     async def evaluate(self) -> tuple[float, dict]:
         if is_finished(await self.observe()):
-            finish_message = self._conversation.agent_final_response()
-            reward, predicted_files, true_files = reward_function(finish_message, self.task['misc']['instance'])
+            finish_message = get_agent_final_response(self._conversation.state.events)
+            reward, predicted_files, true_files = reward_function(finish_message, self.task.misc)
             return reward, {"predicted_files": predicted_files, "true_files": true_files}
         return 0.0, {}

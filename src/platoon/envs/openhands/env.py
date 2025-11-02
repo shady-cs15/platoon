@@ -22,10 +22,13 @@ class OpenHandsEnv:
     def __init__(self, task: Task, agent: AgentBase, workspace: str | BaseWorkspace):
         self._task = task
         self._agent = agent
+        if not isinstance(workspace, BaseWorkspace):
+            workspace = str(workspace)
         self._workspace = workspace
+        self._conversation = None
     
     async def reset(self) -> OpenHandsObservation:
-        self._conversation: BaseConversation = Conversation(agent=self._agent, workspace=self._workspace, visualize=False)
+        self._conversation: BaseConversation = Conversation(agent=self._agent, workspace=self._workspace, visualize=False, max_iteration_per_run=self._task.max_steps)
         self._state = OpenHandsObservation(task=self._task, conversation_state=self._conversation.state)
         self._conversation.send_message(self._task.goal)
         # NOTE: Run the conversation in a separate thread to avoid blocking the main thread.
@@ -82,7 +85,9 @@ class OpenHandsEnv:
 
     
     async def close(self) -> None:
-        self._conversation.close()
+        if self._conversation is not None:
+            self._conversation.close()
+        self._conversation = None
 
     # TODO: Consider adding a return_copy option here.
     async def observe(self) -> OpenHandsObservation:

@@ -41,6 +41,7 @@ from areal.utils import stats_tracker
 import pandas as pd
 from platoon.envs.base import Task
 from random import shuffle
+from dataclasses import asdict
 
 
 def set_expandable_segments(enable: bool) -> None:
@@ -260,19 +261,24 @@ def main(args):
     
 
     dataset = pd.read_parquet(config.train_dataset.path) # Assumes shuffled dataset.
+    
+    
+    def create_task_from_instance(x: dict) -> Task:
+        return Task(
+            goal="",
+            max_steps=config.workflow_config['max_steps_per_rollout'],
+            misc={
+                "instance_id": x['instance_id'],
+                "repo": x['repo'],
+                "base_commit": x['base_commit'],
+                "problem_statement": x['problem_statement'],
+                "target": x['target'],
+            }
+        )
 
-    dataset_shard = dataset.iloc[dp_rank::dp_world_size].apply(lambda x: Task(
-        goal="",
-        max_steps=config.workflow_config['max_steps_per_rollout'],
-        misc={
-            "instance_id": x['instance_id'],
-            "repo": x['repo'],
-            "base_commit": x['base_commit'],
-        }
-    )).to_list()
+    dataset_shard = [asdict(create_task_from_instance(x)) for x in dataset.iloc[dp_rank::dp_world_size].to_dict(orient='records')]
 
-
-    train_dataset = Dataset.from_list([{ "task_id": x } for x in dataset_shard])
+    train_dataset = Dataset.from_list(dataset_shard)
 
     # Create dataset and dataloaderss
     train_dataloader = StatefulDataLoader(

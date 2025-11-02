@@ -74,17 +74,30 @@ def clone_instance(
         return False, None
 
 def run_single_rollout_process(args: tuple[str, dict]) -> dict:
-    task, config_dict = args
+    task_dict, config_dict = args
+    task = Task.from_dict(task_dict)
     config = RolloutGeneratorConfig(**config_dict)
 
     async def run_rollout() -> dict:
         agent = env = None
         try:
             workspace = Path(config.output_dir) / "testbed"
-            instance_id = task['misc']['instance_id']
-            repo_name = task['misc']['repo']
-            commit_id = task['misc']['base_commit']
+            instance_id = task.misc['instance_id']
+            repo_name = task.misc['repo']
+            commit_id = task.misc['base_commit']
+            problem_statement = task.misc['problem_statement']
             status, working_dir = clone_instance(repo_name, commit_id, instance_id, workspace)
+            task.goal = f"""I have access to a python code repository in the directory {working_dir} . 
+
+Consider the following issue description:
+
+<issue_description>
+{problem_statement}
+</issue_description>
+
+Act as a code search agent to find the relevant files where we need to make changes so that <issue_description> is met?
+NOTE: You do not need to solve the issue, all you need to do is find the relevant files. Your output will be used to guide another agent to solve the issue.
+Only use grep to find and please output your answer as just a list of the relevant files that are directly related to the <issue_description> in the format <file-list>['file1', 'file2', ...]</file-list>."""
 
             if not status:
                 raise ValueError(f"Failed to clone instance {instance_id} for task {task['id']}")
@@ -100,10 +113,10 @@ def run_single_rollout_process(args: tuple[str, dict]) -> dict:
                 engine = llm_client.proxy_engine
                 base_url = get_or_start_openai_compat_server(engine, config.model_name)
             
-            api_key = llm_client.api_key if isinstance(llm_client, LLMClient) else 'NONE'
-            llm = LLM(model=config.model_name, api_key=SecretStr(api_key), base_url=base_url, usage_id="agent")
+            api_key = llm_client.api_key if not isinstance(llm_client, ArealLLMClient) else 'NONE'
+            llm = LLM(model="openai/" + config.model_name, api_key=SecretStr(api_key), base_url=base_url, usage_id="agent",  native_tool_calling=False)
 
-            env = CodeIssueLocalizationEnv(task=task, agent=get_default_agent(llm=llm, cli_mode=False), workspace=workspace)
+            env = CodeIssueLocalizationEnv(task=task, agent=get_default_agent(llm=llm, cli_mode=True), workspace=workspace)
             agent = OpenHandsAgent()
 
 

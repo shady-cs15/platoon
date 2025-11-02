@@ -1,5 +1,5 @@
-experiment_name: appworld-linear-reinforce
-trial_name: reinforcecustom-linear-qwen3-4b-trial11
+experiment_name: code-localization-reinforce
+trial_name: reinforce-code-localization-trial2
 
 seed: 343
 total_train_epochs: 100
@@ -37,7 +37,7 @@ gconfig: #TODO: Remove this from config and use workflow_config as the source of
 workflow_config:
   model_name: ${actor.path}
   max_steps_per_rollout: 35 #50
-  output_dir: /mnt/efs/tmp/areal/experiments/reinforcecustom-linear-qwen3-4b-trial11
+  output_dir: /mnt/efs/tmp/areal/experiments/reinforce-code-localization-trial2`
   verbose: null
   per_rollout_timeout_seconds: null
   model_endpoint: null
@@ -46,7 +46,7 @@ workflow_config:
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path:  /mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-qwen3-4b-linear_latest/checkpoint-142 #/mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-qwen3-4b-linear_latest/checkpoint-71 #/mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-qwen3-8b-recursive_latest #Qwen/Qwen2.5-7B-Instruct #/mnt/efs/data/echoagent/llama-factory/saves/appworld-sft-gemma3-4b-recursive_latest
+  path:  Qwen/Qwen3-4B
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: true
@@ -121,7 +121,7 @@ sglang:
 train_dataset:
   batch_size: 44
   type: rl
-  path: ""
+  path: /mnt/efs/platoon/src/platoon/envs/code_issue_localization/train_shuffled.parquet
 
 valid_dataset:
   batch_size: 44
@@ -160,7 +160,7 @@ stats_logger:
   fileroot: ${cluster.fileroot}
   wandb:
     mode: online
-    project: recursive-agents
+    project: code-localization-platoon
 
 launcher:
   inference_server_cpus_per_gpu: 32
