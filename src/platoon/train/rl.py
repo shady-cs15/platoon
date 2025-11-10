@@ -1,35 +1,42 @@
+from copy import deepcopy
 from dataclasses import dataclass, field
-from datasets import Dataset
-from areal.api.io_struct import FinetuneSpec, StepInfo, WeightUpdateMeta
+import datetime
+import os
+
 from areal.api.alloc_mode import AllocationMode
-from areal.utils import seeding, stats_tracker  
+from areal.api.cli_args import GRPOConfig
+from areal.api.io_struct import FinetuneSpec, StepInfo, WeightUpdateMeta
 from areal.api.workflow_api import RolloutWorkflow
-from platoon.utils.train import VariableBatchInferenceEngineConfig, set_expandable_segments, post_process_and_redistribute_tensor_container
-from platoon.train.aent.aent_args import AEntPPOActorConfig
-from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
+from areal.engine.ppo.actor import FSDPPPOActor
 from areal.engine.sglang_remote import RemoteSGLangEngine
+from areal.platforms import current_platform
+from areal.utils import seeding, stats_tracker
+from areal.utils.data import (
+    broadcast_tensor_container,
+    cycle_dataloader,
+    tensor_container_to,
+)
 from areal.utils.device import log_gpu_stats
 from areal.utils.evaluator import Evaluator
 from areal.utils.hf_utils import load_hf_tokenizer
 from areal.utils.recover import RecoverHandler
 from areal.utils.saver import Saver
 from areal.utils.stats_logger import StatsLogger
-from areal.api.cli_args import GRPOConfig
-from areal.platforms import current_platform
-from areal.utils.data import (
-    broadcast_tensor_container,
-    cycle_dataloader,
-    tensor_container_to,
-)
-import os
-import datetime
-import torch.distributed as dist
+from datasets import Dataset
 from torch.utils.data import DistributedSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
+from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 import torch
-from areal.engine.ppo.actor import FSDPPPOActor
+import torch.distributed as dist
+
+
+from platoon.train.aent.aent_args import AEntPPOActorConfig
 from platoon.train.aent.actor import FSDPAEntPPOActor
-from copy import deepcopy
+from platoon.utils.train import (
+    VariableBatchInferenceEngineConfig,
+    post_process_and_redistribute_tensor_container,
+    set_expandable_segments,
+)
 
 
 @dataclass
@@ -85,7 +92,7 @@ class PlatoonStepWiseRLTrainer:
             sampler=DistributedSampler(
                 train_dataset, 
                 num_replicas=self.actor.data_parallel_world_size, 
-                rank=self.actor.data_parallel_rank
+                rank=self.actor.data_parallel_rank,
                 shuffle=config.train_dataset.shuffle,
                 drop_last=config.train_dataset.drop_last,
             ),

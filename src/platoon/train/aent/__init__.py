@@ -1,0 +1,1 @@
+# NOTE: AEnt implementation is adopted from https://github.com/inclusionAI/AReaL/tree/main/recipe/AEnt.

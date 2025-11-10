@@ -4,7 +4,7 @@ from typing import Dict, List
 import torch
 from tensordict import TensorDict
 
-from areal.api.cli_args import MicroBatchSpec, PPOActorConfig
+from areal.api.cli_args import MicroBatchSpec
 from areal.api.engine_api import TrainEngine
 from areal.engine.fsdp_engine import FSDPEngine
 from areal.engine.ppo.actor import PPOActor
@@ -12,10 +12,8 @@ from areal.utils import stats_tracker
 from areal.utils.data import split_padded_tensor_dict_into_mb_list
 from areal.utils.functional import (
     dynamic_sampling,
-    gather_logprobs,
     gather_logprobs_entropy,
     ppo_actor_loss_fn,
-    reward_overlong_penalty,
 )
 from platoon.train.aent.aent_args import AEntPPOActorConfig
 from .functional import gather_logprobs_clamped_entropy
