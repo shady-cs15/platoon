@@ -1,5 +1,5 @@
 experiment_name: code-localization-reinforce-plus-plus
-trial_name: reinforce-code-localization-plus-plus-trial4
+trial_name: reinforce-code-localization-plus-plus-trial5
 
 seed: 343 #4
 total_train_epochs: 100
@@ -37,7 +37,7 @@ gconfig: #TODO: Remove this from config and use workflow_config as the source of
 workflow_config:
   model_name: ${actor.path}
   max_steps_per_rollout: 35 #50
-  output_dir: /mnt/efs/tmp/areal/experiments/reinforce-code-localization-plus-plus-trial4
+  output_dir: /mnt/efs/tmp/areal/experiments/reinforce-code-localization-plus-plus-trial5
   verbose: null
   per_rollout_timeout_seconds: null
   model_endpoint: null
@@ -71,9 +71,9 @@ actor:
   reward_bias: 0.0 #0.5
   aent:
     # effective coeff should be divided by reward_scaling
-    entropy_coeff: 0.0002
+    entropy_coeff: 0.0 #0.0002
     entropy_clamp: 0.4
-    adaptive_coeff: True
+    adaptive_coeff: False #True
     # following params are disabled if adaptive_coeff==False
     entropy_high: 0.23
     entropy_low: 0.05

@@ -32,7 +32,6 @@ def clamped_softmax_entropy(logits: torch.Tensor, entropy_clamp: float):
     torch.cuda.empty_cache()
     clamped_probs = F.softmax(clamped_logits, dim=-1)
     clamped_entropy = -torch.sum(clamped_probs * clamped_logprobs, dim=-1)
-    # clamped_entropy = torch.logsumexp(clamped_logits, dim=-1) - torch.sum(clamped_probs * logits, dim=-1)
     return clamped_entropy
 
 

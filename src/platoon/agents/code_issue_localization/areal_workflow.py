@@ -25,7 +25,7 @@ class CodeIssueLocalizationArealWorkflow:
             # Use spawn context to avoid forking when AReaL's workflow thread/event loop is active
             with ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn")) as executor:
                 results = await loop.run_in_executor(executor, run_single_rollout_process, args)
-            #results = await asyncio.to_thread(run_single_rollout_process, args)
+            #results = await asyncio.to_thread(run_single_rollout_process, args) # TODO: Support multithreading instead of multiprocessing.
             
             areal_completion_data_list = []
             for trajectory in results['trajectories'].values():
