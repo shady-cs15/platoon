@@ -249,23 +249,9 @@ class TextCraftCodeExecutor(IPythonCodeExecutor, ForkableCodeExecutor):
    - Complete the task with a message
    - Example: finish("Successfully crafted all required items")
 
-4. await launch_subagent(targets: dict, num_steps: int, context: str = "") -> str
-   - Launch a subagent to craft specific targets
-   - Example: await launch_subagent({"yellow_dye": 1, "stick": 2}, 20)
-   - The subagent will have access to the same inventory and recipes
-   - Make sure to provide sufficient num_steps budget to the subagent to complete the task.
-   - Returns the subagent's finish message
-   - You optionally can provide a context string to the subagent with a summary of any useful context you have gathered for its task,
-        to help reduce redundant actions.
-
-5. view_inventory() -> dict
+4. view_inventory() -> dict
    - View your current inventory
    - Example: inv = view_inventory()
-   
-NOTE: A good efficient strategy could be to use get_info to get the recipes for target items, view_inventory to understand missing ingredients, and recursively 
-call launch_subagent to craft any missing ingredients from the inventory.
-
-Note that asyncio has already been imported for you. You can launch subagents using `await launch_subagent` or `asyncio.create_task` + `await asyncio.gather` to launch multiple subagents concurrently.
 """
     
     async def reset(self) -> 'TextCraftCodeExecutor':
@@ -280,6 +266,42 @@ Note that asyncio has already been imported for you. You can launch subagents us
             inventory=self.inventory  # Share inventory by reference
         )
 
+
+class TextCraftRecursiveCodeExecutor(TextCraftCodeExecutor):
+    async def describe_action_space(self) -> str:
+        return """Available Actions:
+1. craft(ingredients: dict, target: tuple[str, int]) -> str
+   - Craft an item using ingredients dictionary and target (item_name, total_count)
+   - target_count is the TOTAL number of items to produce (not recipe executions)
+   - target_count MUST be evenly divisible by the recipe's result count
+   - If multiple recipes exist for an item, all are tried until one succeeds
+   - Example: craft({"stick": 2, "oak_planks": 3}, ("wooden_pickaxe", 1))
+   - Example: craft({"oak_log": 4}, ("oak_planks", 16))  # 4 logs → 16 planks (4 items per craft)
+
+2. get_info(items: list) -> list[dict]
+   - Get information about items (recipes, whether they can be crafted, etc.)
+   - Example: get_info(["yellow_dye", "yellow_terracotta"])
+
+3. finish(message: str) -> str
+   - Complete the task with a message
+   - Example: finish("Successfully crafted all required items")
+
+4. await launch_subagent(targets: dict, num_steps: int, context: str = "") -> str
+   - Launch a subagent to craft specific targets
+   - Example: await launch_subagent({"yellow_dye": 1, "stick": 2}, 20)
+   - The subagent will have access to the same inventory and recipes
+   - Make sure to provide sufficient num_steps budget to the subagent to complete the task.
+   - Returns the subagent's finish message
+   - You optionally can provide a context string to the subagent with a summary of any useful context you have gathered for its task,
+        to help reduce redundant actions.
+
+5. view_inventory() -> dict
+   - View your current inventory
+   - Example: inv = view_inventory()
+
+Note that asyncio has already been imported for you. You can launch subagents using `await launch_subagent` or `asyncio.create_task` + `await asyncio.gather` to launch multiple subagents concurrently.
+"""
+        
 
 class TextCraftEnv(CodeActEnv):
     """Environment for TextCraft crafting tasks with recursive agent spawning."""
@@ -406,3 +428,10 @@ class TextCraftEnv(CodeActEnv):
             targets[item_name] = count
         
         return targets if targets else None
+
+class TextCraftRecursiveEnv(TextCraftEnv):
+    """Environment for TextCraft crafting tasks with recursive agent spawning."""
+    
+    def __init__(self, task: Task, recipes_dir: Optional[Path] = None, initial_inventory: Optional[Dict[str, int]] = None):
+        super().__init__(task, recipes_dir, initial_inventory)
+        self._code_executor = TextCraftRecursiveCodeExecutor(task, recipes_dir, initial_inventory)

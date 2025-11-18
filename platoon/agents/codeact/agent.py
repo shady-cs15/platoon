@@ -101,9 +101,9 @@ class CodeActAgent:
         pass
 
     async def fork(self, task: Task) -> CodeActAgent:
-        return CodeActAgent(
-            self.prompt_builder,
-            self.llm_client.fork(),
+        return type(self)(
+            prompt_builder=self.prompt_builder,
+            llm_client=self.llm_client.fork(),
             stuck_in_loop_threshold=self.stuck_in_loop_threshold,
             stuck_in_loop_window=self.stuck_in_loop_window,
         )

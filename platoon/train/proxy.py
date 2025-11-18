@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from areal.experimental.openai.client import ArealOpenAI
 from areal.experimental.openai.proxy import (
     AReaLEndSessionRequest,
     ProxySession,
@@ -38,27 +37,3 @@ class ArealProxySession(ProxySession):
             payload=payload,
         )
         await self.http_session.close()
-
-
-# Patch to override AReaL's behavior of setting max_tokens to 512 if not provided.
-class PatchedArealOpenAI(ArealOpenAI):
-    def __init__(self, max_tokens: int, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.max_tokens = max_tokens
-        
-        self.old_responses_create = self.responses.create
-        self.old_chat_completions_create = self.chat.completions.create
-        
-        def responses(*args, **kwargs):
-            if "max_tokens" not in kwargs:
-                kwargs["max_tokens"] = self.max_tokens
-            return self.old_responses_create(*args, **kwargs)
-        
-        def chat_completions(*args, **kwargs):
-            if "max_tokens" not in kwargs:
-                kwargs["max_tokens"] = self.max_tokens
-            return self.old_chat_completions_create(*args, **kwargs)
-        
-        self.responses.create = responses
-        self.chat.completions.create = chat_completions
-

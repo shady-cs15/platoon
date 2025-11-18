@@ -18,7 +18,6 @@ from areal.api.cli_args import GRPOConfig
 from areal.platforms import current_platform
 from areal.utils.network import find_free_ports
 from areal.experimental.openai.proxy import ProxyServer
-from areal.utils.data import tensor_container_to
 from areal.utils import logging
 from areal.experimental.openai.client import ArealOpenAI
 import os
@@ -29,7 +28,6 @@ from torchdata.stateful_dataloader import StatefulDataLoader
 import torch
 from areal.engine.ppo.actor import FSDPPPOActor
 from platoon.train.aent.actor import FSDPAEntPPOActor
-from platoon.train.proxy import PatchedArealOpenAI
 from copy import deepcopy
 
 logger = logging.getLogger("Platoon RL Trainer")
@@ -214,53 +212,19 @@ class PlatoonStepWiseRLTrainer:
                     workflow=workflow,
                     should_accept_fn=lambda sample: True,
                 )
-            
-                # reward_mask = torch.ones_like(batch['task_reward'], dtype=torch.bool)
-                # output_token_mask = torch.ones_like(batch['num_output_tokens'], dtype=torch.bool)
-                # input_token_mask = torch.ones_like(batch['num_input_tokens'], dtype=torch.bool)
-                # num_steps_mask = torch.ones_like(batch['num_steps'], dtype=torch.bool)
-                
-                # stats_tracker.get('platoon_train_stats').denominator(task_reward_mask=reward_mask, num_output_tokens_mask=output_token_mask, num_input_tokens_mask=input_token_mask, num_steps_mask=num_steps_mask)
-                # stats_tracker.get('platoon_train_stats').stat(task_reward=batch['task_reward'], denominator="task_reward_mask")
-                # stats_tracker.get('platoon_train_stats').stat(num_output_tokens=batch['num_output_tokens'], denominator="num_output_tokens_mask")
-                # stats_tracker.get('platoon_train_stats').stat(num_input_tokens=batch['num_input_tokens'], denominator="num_input_tokens_mask")
-                # stats_tracker.get('platoon_train_stats').stat(num_steps=batch['num_steps'], denominator="num_steps_mask")
                 
                 torch.cuda.empty_cache()
-                
-                # if config.rollout.shuffle_cross_task or config.rollout.ensure_batch_divisible_by > 1:
-                #     # TODO: We need to move the data to gpu here.
-                #     batch = post_process_and_redistribute_tensor_container(batch, shuffle=config.rollout.shuffle_cross_task, ensure_divisible_by=config.rollout.ensure_batch_divisible_by, group=self.actor.data_parallel_group)
-                #     torch.cuda.empty_cache()
-                #     # Create barrier to synchronize all rollout processes.
-                #     dist.barrier(device_ids=[self.actor.device.index])
-                #     current_platform.synchronize()
+
 
             if config.actor.recompute_logprob or config.actor.use_decoupled_loss:
                 with stats_tracker.record_timing("recompute_logp"):
                     logp = self.actor.compute_logp(batch)
-                    # Ensure prox_logp token width matches attention_mask for proper microbatch splitting
-                    # attn_len = batch["attention_mask"].shape[1]
-                    # if torch.is_tensor(logp) and logp.ndim == 2 and logp.shape[1] != attn_len:
-                    #     if logp.shape[1] < attn_len:
-                    #         pad_width = attn_len - logp.shape[1]
-                    #         logp = torch.nn.functional.pad(logp, (0, pad_width), value=0.0)
-                    #     else:
-                    #         logp = logp[:, :attn_len]
                     batch["prox_logp"] = logp
                     log_gpu_stats("recompute logp")
 
             if self.ref is not None:
                 with stats_tracker.record_timing("ref_logp"):
                     ref_logp = self.ref.compute_logp(batch)
-                    # Align ref_logp token width with attention_mask as well
-                    # attn_len = batch["attention_mask"].shape[1]
-                    # if torch.is_tensor(ref_logp) and ref_logp.ndim == 2 and ref_logp.shape[1] != attn_len:
-                    #     if ref_logp.shape[1] < attn_len:
-                    #         pad_width = attn_len - ref_logp.shape[1]
-                    #         ref_logp = torch.nn.functional.pad(ref_logp, (0, pad_width), value=0.0)
-                    #     else:
-                    #         ref_logp = ref_logp[:, :attn_len]
                     batch["ref_logp"] = ref_logp
                     log_gpu_stats("ref logp")
 
@@ -315,11 +279,6 @@ class PlatoonStepWiseRLTrainer:
                             print(f"Evaluated {cnt} tasks")
                             print(f"Task Rewards: {results['task_reward']}")
                             
-                            # tr = torch.as_tensor(results['task_reward'], dtype=torch.float32, device=self.actor.device)
-                            # mask = torch.ones_like(tr, dtype=torch.bool)
-
-                            # stats_tracker.get("platoon_eval_stats").denominator(task_reward_mask=mask)
-                            # stats_tracker.get("platoon_eval_stats").stat("task_reward_mask", task_reward=tr)  # default: AVG/MIN/MAX
                         except TimeoutError as e:
                             print(f"Evaluation timed out after 1800 seconds: {e}")
                         
