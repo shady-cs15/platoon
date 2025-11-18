@@ -4,23 +4,26 @@ _Note: Like much else in this repo, documentation is incomplete and WIP._
 
 ## Setup
 
-With uv:
-```
-UV_GIT_LFS=1 uv sync --all-groups
-```
-
-With pip:
-```
-pip install -e .
+Install core platoon package:
+```bash
+# In the root directory of the repo
+uv sync
 ```
 
-## Training a model with Reinforcement Learning loop
-Make appropriate chagnes to the config file used in the command below.
+Install a plugin or an extension:
+```bash
+cd plugin-root-directory
+uv sync
+``` 
+
+## Training a model with Reinforcement Learning
+Make appropriate chagnes to the config file used in the command(s) below.
 We use AReaL for our reinforcement learning backend. Please refer to its documentation for AReaL installation and config options: https://github.com/inclusionAI/AReaL/tree/main. 
 
-Example:
+Single Node Training Example:
 ```bash
-python3 -m areal.launcher.local src/platoon/train/appworld_reinforce++.py --config src/platoon/train/appworld_reinforce++.yaml experiment_name=appworld-reinforce++ trial_name=trialreinforce0 > logs.md
+cd plugins/textcraft # replace with your plugin of choice
+uv run python3 -m areal.launcher.local /mnt/efs/platoon/plugins/textcraft/platoon/textcraft/train.py --config /mnt/efs/platoon/plugins/textcraft/platoon/textcraft/textcraft_reinforce_plus_plus.yaml experiment_name=textcraft-reinforce trial_name=trial0 > logs.md
 ```
 
 ## Visualizing Trajectories

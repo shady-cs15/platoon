@@ -6,24 +6,43 @@ authors = [
     {name = "Apurva Gandhi", email = "apurvag@cs.cmu.edu"}
 ]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = "~=3.12.0"
 dependencies = [
-    "ai-rubric",
+    "ai-rubric>=0.2.2",
+    "areal[cuda]",
     "ipython>=9.4.0",
     "pandas>=2.3.3",
     "pyarrow>=22.0.0",
+    "rich>=13.9.4",
+    "textual>=5.3.0",
+    "notebook>=7.4.4",
+    "tenacity",
+    "tensordict"
 ]
 
 [tool.uv]
-override-dependencies = ["fastapi[standard]>=0.115.0"]
+override-dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "openai==1.99.6",
+    "xgrammar==0.1.24",
+    "outlines-core==0.1.26",
+    "pyarrow==20.0.0",
+    "huggingface_hub==0.34",
+    "datasets==4.3.0",
+    "networkx==3.3.0" # This can be removed if ai-rubric pins 3.3.0 or areal relaxes the pin.
+]
+no-build-isolation-package = ['flash-attn']
 
 [tool.uv.sources]
 appworld = { git = "https://github.com/stonybrooknlp/appworld" }
-ai-rubric = { git = "https://github.com/ApGa/rubric", rev = "apga/llm-scorer" }
+areal = { git = "https://github.com/inclusionAI/AReaL.git", rev = "7b32f0e6930266a341cdcd02ce5ce204598284bf" }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["platoon"]
 
 [dependency-groups]
 dev = [
@@ -34,22 +53,15 @@ dev = [
     "ruff>=0.11.9",
 ]
 
-appworld = [
-    "appworld"
-]
-openhands = [
-    "openhands-sdk",
-    "openhands-tools",
-    "openhands-workspace",
-    "openhands-agent-server"
-]
-interactive = [
-    "notebook>=7.4.4",
-]
-tui = [
-    "rich>=13.9.4",
-    "textual>=5.3.0",
-]
+#appworld = [
+#    "appworld"
+#]
+#openhands = [
+#    "openhands-sdk==1.10",
+#    "openhands-tools==1.10",
+#    "openhands-workspace==1.10",
+#    "openhands-agent-server==1.10"
+#]
 
 [tool.ruff]
 line-length = 100
