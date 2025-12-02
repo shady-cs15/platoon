@@ -8,6 +8,10 @@ authors = [
 ]
 dependencies = [
     "platoon >= 0.1.0",
+    "openhands-sdk",
+    "openhands-tools",
+    "openhands-workspace",
+    "openhands-agent-server"
 ]
 no-build-isolation-package = ['flash-attn']
 

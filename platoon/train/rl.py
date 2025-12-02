@@ -27,6 +27,7 @@ from torch.utils.data import DistributedSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 import torch
 from areal.engine.ppo.actor import FSDPPPOActor
+from areal.engine.ppo.actor import PPOActorConfig
 from platoon.train.aent.actor import FSDPAEntPPOActor
 from copy import deepcopy
 
@@ -54,7 +55,8 @@ class WorkflowConfig:
 class PlatoonStepWiseRLTrainerConfig(GRPOConfig):
     workflow_config: WorkflowConfig = field(default_factory=WorkflowConfig)
     rollout: VariableBatchInferenceEngineConfig = field(default_factory=VariableBatchInferenceEngineConfig)
-    actor: AEntPPOActorConfig = field(default_factory=AEntPPOActorConfig)
+    #actor: AEntPPOActorConfig = field(default_factory=AEntPPOActorConfig)
+    actor: PPOActorConfig = field(default_factory=PPOActorConfig)
 
 
 # TODO: Add support for megatron training backend and VLLM inference backend.
@@ -90,7 +92,8 @@ class PlatoonStepWiseRLTrainer:
         assert parallel_strategy is not None
         
         
-        self.actor = FSDPAEntPPOActor(config=config.actor)
+        #self.actor = FSDPAEntPPOActor(config=config.actor)
+        self.actor = FSDPPPOActor(config=config.actor)
         self.actor.create_process_group(parallel_strategy=parallel_strategy)
         
         
@@ -159,6 +162,7 @@ class PlatoonStepWiseRLTrainer:
             all_addresses, self.proxy_server.public_addr, group=self.actor.data_parallel_group
         )
         logger.info(f"Found {len(all_addresses)} proxy servers: {all_addresses}")
+        #dist.barrier(group=self.actor.cpu_group)
         dist.barrier(device_ids=[self.actor.device.index])
         
         
@@ -178,7 +182,7 @@ class PlatoonStepWiseRLTrainer:
         )
         
         # TODO: should do this for other groups as well? Make configurable
-        dist.distributed_c10d._set_pg_timeout(datetime.timedelta(seconds=7200), self.actor.data_parallel_group)
+        #dist.distributed_c10d._set_pg_timeout(datetime.timedelta(seconds=7200), self.actor.data_parallel_group)
             
     def train(
         self,
@@ -212,30 +216,57 @@ class PlatoonStepWiseRLTrainer:
                     workflow=workflow,
                     should_accept_fn=lambda sample: True,
                 )
-                
-                torch.cuda.empty_cache()
 
-
+ 
             if config.actor.recompute_logprob or config.actor.use_decoupled_loss:
                 with stats_tracker.record_timing("recompute_logp"):
                     logp = self.actor.compute_logp(batch)
                     batch["prox_logp"] = logp
                     log_gpu_stats("recompute logp")
-
+                    
+                # current_platform.synchronize()
+                # dist.barrier(group=self.actor.cpu_group)
+                
+                dist.barrier(device_ids=[self.actor.device.index])
+                current_platform.synchronize()
+                
+            
             if self.ref is not None:
                 with stats_tracker.record_timing("ref_logp"):
                     ref_logp = self.ref.compute_logp(batch)
                     batch["ref_logp"] = ref_logp
                     log_gpu_stats("ref logp")
 
+                # current_platform.synchronize()
+                # dist.barrier(group=self.actor.cpu_group)
+                
+                dist.barrier(device_ids=[self.actor.device.index])
+                current_platform.synchronize()
+            
             with stats_tracker.record_timing("compute_advantage"):
                 self.actor.compute_advantages(batch)
                 log_gpu_stats("compute advantages")
+                
+            # current_platform.synchronize()
+            # dist.barrier(group=self.actor.cpu_group)
 
+            torch.cuda.empty_cache()
+            dist.barrier(device_ids=[self.actor.device.index])
+            current_platform.synchronize()
+
+            
             with (stats_tracker.record_timing("train_step")):
-                stats = self.actor.aent_ppo_update(batch, global_step)
+                #stats = self.actor.aent_ppo_update(batch, global_step)
+                stats = self.actor.ppo_update(batch)
                 self.actor.step_lr_scheduler()
                 log_gpu_stats("ppo update")
+                
+            # current_platform.synchronize()
+            # dist.barrier(group=self.actor.cpu_group)
+            
+            torch.cuda.empty_cache()
+            dist.barrier(device_ids=[self.actor.device.index])
+            current_platform.synchronize()
 
             # pause inference for updating weights, save, and evaluation
             self.rollout.pause()
@@ -263,6 +294,9 @@ class PlatoonStepWiseRLTrainer:
             torch.cuda.empty_cache()
             dist.barrier(device_ids=[self.actor.device.index])
             current_platform.synchronize()
+            
+            # current_platform.synchronize()
+            # dist.barrier(group=self.actor.cpu_group)
 
             with stats_tracker.record_timing("eval"):
 
@@ -282,8 +316,12 @@ class PlatoonStepWiseRLTrainer:
                         except TimeoutError as e:
                             print(f"Evaluation timed out after 1800 seconds: {e}")
                         
+                    # current_platform.synchronize() 
+                    # dist.barrier(group=self.actor.cpu_group)
+                    
+                    torch.cuda.empty_cache()
                     dist.barrier(device_ids=[self.actor.device.index])
-                    current_platform.synchronize() 
+                    current_platform.synchronize()
 
                 self.evaluator.evaluate(
                     evaluate_fn,
@@ -292,13 +330,20 @@ class PlatoonStepWiseRLTrainer:
                     global_step,
                 )
 
+            # current_platform.synchronize()
+            # dist.barrier(group=self.actor.cpu_group)
+            
             dist.barrier(device_ids=[self.actor.device.index])
             current_platform.synchronize()
-
+            
             # Upload statistics to the logger (e.g., wandb)
             stats = stats_tracker.export_all(reduce_group=self.actor.data_parallel_group)
             self.stats_logger.commit(epoch, step, global_step, stats)
 
+            # current_platform.synchronize()
+            # dist.barrier(group=self.actor.cpu_group)
+            
+            torch.cuda.empty_cache()
             dist.barrier(device_ids=[self.actor.device.index])
             current_platform.synchronize()
 

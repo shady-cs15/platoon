@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from platoon.envs.base import Task
-from platoon.envs.openhands.types import OpenHandsObservation
+from .types import OpenHandsObservation, OpenHandsTrajectoryStep, OpenHandsAction
 from openhands.sdk.conversation import get_agent_final_response
 from openhands.sdk.conversation.base import BaseConversation
 from openhands.sdk.agent.base import AgentBase
@@ -12,9 +12,8 @@ from copy import deepcopy
 from openhands.sdk.conversation.conversation import Conversation
 from platoon.episode.context import current_trajectory_collection, current_trajectory, finish_message, error_message
 from platoon.utils.openhands_utils import get_obs_for_last_action
-from platoon.openhands.types import OpenHandsTrajectoryStep, OpenHandsAction
 from platoon.utils.openhands_utils import is_finished
-from openhands.sdk.conversation.state import AgentExecutionStatus
+from openhands.sdk.conversation.state import ConversationExecutionStatus
 import threading
 import asyncio
 
@@ -28,7 +27,7 @@ class OpenHandsEnv:
         self._conversation = None
     
     async def reset(self) -> OpenHandsObservation:
-        self._conversation: BaseConversation = Conversation(agent=self._agent, workspace=self._workspace, visualize=False, max_iteration_per_run=self._task.max_steps)
+        self._conversation: BaseConversation = Conversation(agent=self._agent, workspace=self._workspace, visualizer=None, max_iteration_per_run=self._task.max_steps)
         self._state = OpenHandsObservation(task=self._task, conversation_state=self._conversation.state)
         self._conversation.send_message(self._task.goal)
         # NOTE: Run the conversation in a separate thread to avoid blocking the main thread.
@@ -73,7 +72,7 @@ class OpenHandsEnv:
             self._state.finished = True
             finish_message.set(get_agent_final_response(self._conversation.state.events))
             self._state.misc["finish_message"] = finish_message.get()
-            if self._state.conversation_state.agent_status == AgentExecutionStatus.STUCK:
+            if self._state.conversation_state.agent_status == ConversationExecutionStatus.STUCK:
                 error_message.set("Agent got stuck")
                 self._state.misc["error_message"] = error_message.get()
 

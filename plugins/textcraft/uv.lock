@@ -228,7 +228,7 @@ wheels = [
 [[package]]
 name = "areal"
 version = "0.4.1"
-source = { git = "https://github.com/inclusionAI/AReaL.git?rev=7b32f0e6930266a341cdcd02ce5ce204598284bf#7b32f0e6930266a341cdcd02ce5ce204598284bf" }
+source = { git = "https://github.com/inclusionAI/AReaL.git?rev=4ae2536474dc2d53a23d8f10cb4e90007906c607#4ae2536474dc2d53a23d8f10cb4e90007906c607" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -2104,7 +2104,7 @@ wheels = [
 [[package]]
 name = "latex2sympy2"
 version = "1.9.0"
-source = { git = "https://github.com/inclusionAI/AReaL.git?subdirectory=evaluation%2Flatex2sympy&rev=7b32f0e6930266a341cdcd02ce5ce204598284bf#7b32f0e6930266a341cdcd02ce5ce204598284bf" }
+source = { git = "https://github.com/inclusionAI/AReaL.git?subdirectory=evaluation%2Flatex2sympy&rev=4ae2536474dc2d53a23d8f10cb4e90007906c607#4ae2536474dc2d53a23d8f10cb4e90007906c607" }
 dependencies = [
     { name = "antlr4-python3-runtime" },
     { name = "sympy" },
@@ -3290,7 +3290,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "ai-rubric", specifier = ">=0.2.2" },
-    { name = "areal", extras = ["cuda"], git = "https://github.com/inclusionAI/AReaL.git?rev=7b32f0e6930266a341cdcd02ce5ce204598284bf" },
+    { name = "areal", extras = ["cuda"], git = "https://github.com/inclusionAI/AReaL.git?rev=4ae2536474dc2d53a23d8f10cb4e90007906c607" },
     { name = "ipython", specifier = ">=9.4.0" },
     { name = "notebook", specifier = ">=7.4.4" },
     { name = "pandas", specifier = ">=2.3.3" },

@@ -85,7 +85,7 @@ class CodeActAgent:
         
         prompt = self.prompt_builder.build_messages(obs)
         # TODO: Make inference params configurable.
-        response = await self.llm_client.async_chat_completion(prompt, stop=["</python>"], temperature=1.0, top_p=1, max_tokens=40000)
+        response = await self.llm_client.async_chat_completion(prompt, stop=["</python>"], temperature=1.0, top_p=1, max_tokens=32000)
         response_text = response.choices[0].message.content
         # NOTE: We only do this conditionally, because with Areal, stop words are not supported.
         # And so we might already have the stop word in the response.

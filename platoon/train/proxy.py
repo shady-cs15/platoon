@@ -21,19 +21,22 @@ class ArealProxySession(ProxySession):
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
-        if exc_type is not None:
+        # Always try to end the session to prevent memory leaks in session_cache
+        # even if an exception occurred during the rollout
+        try:
+            if self.session_id is not None:
+                # On exception, set final_reward to 0 (failed rollout)
+                reward = self.final_reward if exc_type is None else 0.0
+                payload = AReaLEndSessionRequest(
+                    session_id=self.session_id, final_reward=reward
+                ).model_dump()
+                await _post_json_with_retry(
+                    self.http_session,
+                    f"{self.stripped_base_url}/rl/end_session",
+                    payload=payload,
+                )
+        except Exception as e:
+            # Log but don't raise - we don't want to mask the original exception
+            print(f"Warning: Failed to end session {self.session_id}: {e}")
+        finally:
             await self.http_session.close()
-            return
-
-        if self.session_id is None:
-            raise ValueError("Session ID is not set")
-
-        payload = AReaLEndSessionRequest(
-            session_id=self.session_id, final_reward=self.final_reward
-        ).model_dump()
-        await _post_json_with_retry(
-            self.http_session,
-            f"{self.stripped_base_url}/rl/end_session",
-            payload=payload,
-        )
-        await self.http_session.close()

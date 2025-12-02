@@ -1,9 +1,10 @@
 experiment_name: textcraft-reinforce-plus-plus
-trial_name: linear-trial0
+trial_name: recursive-trial25
 
 seed: 343
 total_train_epochs: 10
 tokenizer_path: ${actor.path}
+enable_offload: false
 
 
 cluster:
@@ -14,13 +15,13 @@ cluster:
     type: nfs
     nfs_record_root: /mnt/efs/tmp/areal/name_resolve
 
-allocation_mode: sglang:d4p1t1+d4p1t1
+allocation_mode: sglang:d4p1t1+d2p1t1c2
 
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 64
-  queue_size: null
+  max_concurrent_rollouts: 32
+  queue_size: null 
   consumer_batch_size: ${train_dataset.batch_size}
   max_head_offpolicyness: 3
   enable_rollout_tracing: false
@@ -38,15 +39,15 @@ workflow_config:
   rollout_config:
     model_name: ${actor.path}
     max_steps: 50
-    output_dir: /mnt/efs/tmp/areal/experiments/textcraft-reinforce-plus-plus-linear-trial0
+    output_dir: /mnt/efs/tmp/areal/experiments/textcraft-reinforce-plus-plus-recursive-trial25
     verbose: True
     train: true
-    timeout: 600
+    timeout: 300
 
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path: Qwen/Qwen3-VL-8B-Instruct
+  path: Qwen/Qwen3-4B #Qwen/Qwen3-VL-8B-Instruct
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: true
@@ -64,30 +65,31 @@ actor:
     gradient_clipping: 1.0
     warmup_steps_proportion: 0.001
   group_size: ${gconfig.n_samples}
-  eps_clip: 0.25
+  eps_clip: 10000 #0.2
+  #eps_clip_higher: 0.26
   temperature: ${gconfig.temperature}
   reward_scaling: 1.0
   reward_bias: 0.0
-  aent:
-    entropy_coeff: 0.002
-    entropy_clamp: 0.4
-    adaptive_coeff: True
-    entropy_high: 0.23
-    entropy_low: 0.05
-    coeff_lr: 0.001
-    coeff_box_high: 0.003
-    coeff_box_low: 1e-5
-    warmup_steps: 10
+  # aent:
+  #   entropy_coeff: 0.002
+  #   entropy_clamp: 0.4
+  #   adaptive_coeff: True
+  #   entropy_high: 0.23
+  #   entropy_low: 0.05
+  #   coeff_lr: 0.001
+  #   coeff_box_high: 0.003
+  #   coeff_box_low: 1e-5
+  #   warmup_steps: 10
   kl_ctl: 0.0
   kl_estimator: k1
   ppo_n_minibatches: 1
   recompute_logprob: true
-  use_decoupled_loss: true
+  use_decoupled_loss: false
   behav_imp_weight_cap: null
   dynamic_sampling: false
   reward_norm:
-    mean_level: batch
-    std_level: batch
+    mean_level: null
+    std_level: null
   adv_norm:
     mean_level: null
     std_level: null
@@ -116,12 +118,12 @@ sglang:
 
 # datasets
 train_dataset:
-  batch_size: 32
+  batch_size: 64
   type: rl
   path: ""
 
 valid_dataset:
-  batch_size: 32
+  batch_size: 64
   type: rl
   path: ""
 

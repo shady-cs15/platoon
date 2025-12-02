@@ -2,8 +2,8 @@
 from typing import Sequence
 from openhands.sdk.event import ActionEvent, AgentErrorEvent, Event, EventID, MessageEvent
 from openhands.sdk.conversation.base import ConversationStateProtocol
-from openhands.sdk.conversation.state import AgentExecutionStatus
-from platoon.envs.openhands.types import OpenHandsObservation
+from openhands.sdk.conversation.state import ConversationExecutionStatus
+from platoon.openhands.types import OpenHandsObservation
 
 
 def is_action(event: Event) -> bool:
@@ -83,9 +83,9 @@ def get_obs_for_last_action(observation: OpenHandsObservation) -> list[Event]:
 
 def is_finished(observation: OpenHandsObservation, last_event_seen: EventID | None = None) -> bool:
     conversation_state = observation.conversation_state
-    oh_conversation_finished = conversation_state.agent_status == AgentExecutionStatus.FINISHED \
-        or conversation_state.agent_status == AgentExecutionStatus.STUCK \
-        or conversation_state.agent_status == AgentExecutionStatus.ERROR
+    oh_conversation_finished = conversation_state.agent_status == ConversationExecutionStatus.FINISHED \
+        or conversation_state.agent_status == ConversationExecutionStatus.STUCK \
+        or conversation_state.agent_status == ConversationExecutionStatus.ERROR
     last_event_id = conversation_state.events[-1].id
     platoon_episode_caught_up = last_event_id in (observation.last_step_action_id, observation.last_step_observation_id, last_event_seen)
     return oh_conversation_finished and platoon_episode_caught_up

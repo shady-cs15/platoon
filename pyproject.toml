@@ -35,7 +35,7 @@ no-build-isolation-package = ['flash-attn']
 
 [tool.uv.sources]
 appworld = { git = "https://github.com/stonybrooknlp/appworld" }
-areal = { git = "https://github.com/inclusionAI/AReaL.git", rev = "7b32f0e6930266a341cdcd02ce5ce204598284bf" }
+areal = { git = "https://github.com/inclusionAI/AReaL.git", rev = "4ae2536474dc2d53a23d8f10cb4e90007906c607" }
 
 [build-system]
 requires = ["hatchling"]

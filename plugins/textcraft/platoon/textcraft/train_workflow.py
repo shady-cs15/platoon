@@ -19,7 +19,7 @@ def get_train_data_for_step(
     task_id: str,
     ) -> dict | None:
     
-    if 'action_misc' in step['misc'] and 'areal_completion_data' in step['misc']['action_misc'] and 'completion_id' in step['misc']['action_misc']:
+    if 'completion_id' not in step['misc'].get('action_misc', {}):
         print(f"No train data found for step {step['id']} for task {task_id}")
         return None
     
@@ -96,8 +96,8 @@ class TextCraftArealWorkflow(RolloutWorkflow):
         try:
             task_id = data['task_id']
             task = get_task(task_id)
-            if config.rollout_config.max_steps is None:
-                config.rollout_config.max_steps = task.max_steps
+            if config.rollout_config.max_steps is not None:
+                task.max_steps = config.rollout_config.max_steps
             
             async with ArealProxySession(base_url=self.proxy_url) as session:
                 
@@ -108,7 +108,7 @@ class TextCraftArealWorkflow(RolloutWorkflow):
                     str(engine.get_version()),
                 )
                 
-                results = await asyncio.create_task(run_recursive_rollout(task, config.rollout_config))
+                results = await asyncio.create_task(run_rollout(task, config.rollout_config))
                 
                 completions = self.proxy_server.session_cache[session.session_id].completions
                 train_data = get_train_data_for_trajectory_collection(results, completions, task_id)

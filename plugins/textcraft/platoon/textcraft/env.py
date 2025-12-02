@@ -1,7 +1,6 @@
 """TextCraft environment for recursive agent spawning in crafting tasks."""
 from __future__ import annotations
 
-import asyncio
 from copy import deepcopy
 from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
@@ -12,17 +11,23 @@ from platoon.agents.actions.common import finish
 from platoon.agents.actions.subagent import launch_subagent as _launch_subagent
 from platoon.episode.context import finish_message
 from .recipe_loader import RecipeDatabase, Recipe
+from platoon.envs.codeact import safe_asyncio
 
 
 class TextCraftCodeExecutor(IPythonCodeExecutor, ForkableCodeExecutor):
     """Code executor for TextCraft with crafting actions."""
     
-    def __init__(self, task: Task, recipes_dir: Path, inventory: Optional[Dict[str, int]] = None):
+    def __init__(self, task: Task, recipes_dir: Path, inventory: Optional[Dict[str, int]] = None, _share_inventory: bool = False):
         self.recipes_dir = Path(recipes_dir)
         self.recipe_db = RecipeDatabase(self.recipes_dir)
-        self.inventory = inventory.copy() if inventory else {}
+        # When _share_inventory=True, use the inventory dict directly (for subagent propagation)
+        # When False (default), make a copy to avoid unintended mutations
+        if _share_inventory and inventory is not None:
+            self.inventory = inventory
+        else:
+            self.inventory = inventory.copy() if inventory else {}
         self.subagent_results: Dict[str, Dict[str, int]] = {}  # subagent_id -> {item: count}
-        super().__init__(task, actions=(finish, self.craft, self.get_info, self.view_inventory, self.launch_subagent, asyncio))
+        super().__init__(task, actions=(finish, self.craft, self.get_info, self.view_inventory, self.launch_subagent, safe_asyncio))
     
     def craft(self, ingredients: Dict[str, int], target: Tuple[str, int]) -> str:
         """
@@ -263,7 +268,8 @@ class TextCraftCodeExecutor(IPythonCodeExecutor, ForkableCodeExecutor):
         return TextCraftCodeExecutor(
             task=task,
             recipes_dir=self.recipes_dir,
-            inventory=self.inventory  # Share inventory by reference
+            inventory=self.inventory,
+            _share_inventory=True  # Share inventory by reference for subagent propagation
         )
 
 
@@ -306,7 +312,7 @@ Note that asyncio has already been imported for you. You can launch subagents us
 class TextCraftEnv(CodeActEnv):
     """Environment for TextCraft crafting tasks with recursive agent spawning."""
     
-    def __init__(self, task: Task, recipes_dir: Optional[Path] = None, initial_inventory: Optional[Dict[str, int]] = None):
+    def __init__(self, task: Task, recipes_dir: Optional[Path] = None, initial_inventory: Optional[Dict[str, int]] = None, _share_inventory: bool = False):
         if recipes_dir is None:
             recipes_dir = Path(__file__).parent / "recipes"
         
@@ -314,10 +320,11 @@ class TextCraftEnv(CodeActEnv):
         if initial_inventory is None and task.misc.get("initial_inventory"):
             initial_inventory = task.misc["initial_inventory"]
         
-        code_executor = TextCraftCodeExecutor(task, recipes_dir, initial_inventory)
+        code_executor = TextCraftCodeExecutor(task, recipes_dir, initial_inventory, _share_inventory=_share_inventory)
         super().__init__(task, code_executor)
         self._recipes_dir = recipes_dir
-        self._initial_inventory = initial_inventory.copy() if initial_inventory else {}
+        # Only copy for bookkeeping if not sharing
+        self._initial_inventory = initial_inventory if _share_inventory else (initial_inventory.copy() if initial_inventory else {})
 
     
     async def evaluate(self) -> Tuple[float, dict]:
@@ -392,7 +399,8 @@ class TextCraftEnv(CodeActEnv):
         forked_env = TextCraftEnv(
             task=task,
             recipes_dir=self._recipes_dir,
-            initial_inventory=self._code_executor.inventory  # Share by reference
+            initial_inventory=self._code_executor.inventory,
+            _share_inventory=True  # Share inventory by reference for subagent propagation
         )
         
         return forked_env
@@ -432,6 +440,13 @@ class TextCraftEnv(CodeActEnv):
 class TextCraftRecursiveEnv(TextCraftEnv):
     """Environment for TextCraft crafting tasks with recursive agent spawning."""
     
-    def __init__(self, task: Task, recipes_dir: Optional[Path] = None, initial_inventory: Optional[Dict[str, int]] = None):
-        super().__init__(task, recipes_dir, initial_inventory)
-        self._code_executor = TextCraftRecursiveCodeExecutor(task, recipes_dir, initial_inventory)
+    def __init__(self, task: Task, recipes_dir: Optional[Path] = None, initial_inventory: Optional[Dict[str, int]] = None, _share_inventory: bool = False):
+        super().__init__(task, recipes_dir, initial_inventory, _share_inventory=_share_inventory)
+        # Use self._recipes_dir and self._initial_inventory which were set by parent class
+        # (parent applies defaults: recipes_dir from __file__, inventory from task.misc)
+        # Replace executor with Recursive version, sharing the same inventory reference
+        self._code_executor = TextCraftRecursiveCodeExecutor(
+            task, self._recipes_dir, 
+            self._code_executor.inventory,  # Use parent's executor inventory (already shared if _share_inventory=True)
+            _share_inventory=True  # Always share since we're using parent's inventory dict
+        )

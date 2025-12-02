@@ -27,7 +27,7 @@ no-build-isolation-package = ['flash-attn']
 
 [tool.uv.sources]
 platoon = { path = "../..", editable = true }
-platoon-openhands = { path = "..", editable = true}
+platoon-openhands = { path = "../openhands", editable = true}
 
 [tool.ruff]
 line-length = 100

@@ -2,8 +2,10 @@ import sys
 from datasets import Dataset
 from platoon.train.rl import PlatoonStepWiseRLTrainer, PlatoonStepWiseRLTrainerConfig
 from areal.api.cli_args import load_expr_config
-from platoon.textcraft.tasks import get_task_ids
-from platoon.textcraft.train_workflow import TextCraftArealWorkflow
+from platoon.textcraft.tasks import get_task_ids, get_task
+#from platoon.textcraft.train_workflow import TextCraftArealWorkflow
+from platoon.textcraft.rollout import run_rollout, run_recursive_rollout
+from platoon.train.workflows.step_wise import StepWiseArealWorkflow
 
 
 def main(args):
@@ -22,8 +24,10 @@ def main(args):
     ) as trainer:
     
         proxy_server = trainer.proxy_server
-        workflow = TextCraftArealWorkflow(config.workflow_config, proxy_server, 'train_rollout', trainer.actor.device)
-        eval_workflow = TextCraftArealWorkflow(config.workflow_config, proxy_server, 'eval_rollout', trainer.actor.device)
+        #workflow = TextCraftArealWorkflow(config.workflow_config, proxy_server, 'train_rollout', trainer.actor.device)
+        #eval_workflow = TextCraftArealWorkflow(config.workflow_config, proxy_server, 'eval_rollout', trainer.actor.device)
+        workflow = StepWiseArealWorkflow(run_recursive_rollout, get_task, config.workflow_config, proxy_server, 'train_rollout', trainer.actor.device, filter_errors=True)
+        eval_workflow = StepWiseArealWorkflow(run_recursive_rollout, get_task, config.workflow_config, proxy_server, 'eval_rollout', trainer.actor.device)
         
         trainer.train(
             workflow=workflow,

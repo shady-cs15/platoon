@@ -10,6 +10,7 @@ from traitlets.config.loader import Config
 import sys
 import ast
 import asyncio
+import builtins
 from typing import Callable, Sequence
 
 from .types import CodeExecutor, ForkableCodeExecutor, CodeActObservation, CodeActAction, CodeActStep
@@ -106,10 +107,86 @@ class CodeActEnv(Protocol):
             "Either implement fork() for your CodeExecutor or implement a new ForkableEnv for this task."
             )
 
+class SafeAsyncio:
+    """A restricted asyncio wrapper that only exposes safe operations.
+    
+    Blocks dangerous operations like set_event_loop(), new_event_loop(), run(),
+    and set_event_loop_policy() that can cause deadlocks or interfere with
+    the host event loop.
+    """
+    __name__ = 'asyncio'  # So it's injected with the correct name in shell namespace
+    
+    # Safe operations for concurrent execution
+    gather = staticmethod(asyncio.gather)
+    sleep = staticmethod(asyncio.sleep)
+    create_task = staticmethod(asyncio.create_task)
+    wait = staticmethod(asyncio.wait)
+    wait_for = staticmethod(asyncio.wait_for)
+    as_completed = staticmethod(asyncio.as_completed)
+    shield = staticmethod(asyncio.shield)
+    
+    # Safe synchronization primitives
+    Event = asyncio.Event
+    Lock = asyncio.Lock
+    Semaphore = asyncio.Semaphore
+    BoundedSemaphore = asyncio.BoundedSemaphore
+    Condition = asyncio.Condition
+    Queue = asyncio.Queue
+    LifoQueue = asyncio.LifoQueue
+    PriorityQueue = asyncio.PriorityQueue
+    
+    # Safe introspection (read-only)
+    get_running_loop = staticmethod(asyncio.get_running_loop)
+    current_task = staticmethod(asyncio.current_task)
+    all_tasks = staticmethod(asyncio.all_tasks)
+    iscoroutine = staticmethod(asyncio.iscoroutine)
+    iscoroutinefunction = staticmethod(asyncio.iscoroutinefunction)
+    
+    # Timeout context manager (Python 3.11+)
+    if hasattr(asyncio, 'timeout'):
+        timeout = staticmethod(asyncio.timeout)
+    if hasattr(asyncio, 'timeout_at'):
+        timeout_at = staticmethod(asyncio.timeout_at)
+    
+    # Expose TimeoutError for catching
+    TimeoutError = asyncio.TimeoutError
+
+    # Block everything else - especially dangerous operations like:
+    # set_event_loop, new_event_loop, run, set_event_loop_policy, get_event_loop
+    def __getattr__(self, name):
+        raise RuntimeError(
+            f"asyncio.{name} is disabled in sandbox. "
+            f"Only safe operations like gather, create_task, sleep, wait, wait_for, "
+            f"and synchronization primitives (Lock, Event, Queue, etc.) are allowed."
+        )
+
+
+# Singleton instance to be used as the "asyncio" module in the sandbox
+safe_asyncio = SafeAsyncio()
+
+
+def _make_sandboxed_import(safe_asyncio_instance: SafeAsyncio):
+    """Create a sandboxed import function that intercepts asyncio imports.
+    
+    This ensures that even if an agent does `import asyncio` or 
+    `from asyncio import something`, they get our safe wrapper instead.
+    """
+    _original_import = builtins.__import__
+    
+    def _sandboxed_import(name, globals=None, locals=None, fromlist=(), level=0):
+        # Intercept asyncio and all its submodules
+        if name == 'asyncio' or name.startswith('asyncio.'):
+            # For `from asyncio import X` or `import asyncio`, return safe wrapper
+            # Python will then fetch attributes from it
+            return safe_asyncio_instance
+        return _original_import(name, globals, locals, fromlist, level)
+    
+    return _sandboxed_import
+
 
 class IPythonCodeExecutor(CodeExecutor):
     # TODO: Separate actions and modules? Use this info to build action space description?
-    def __init__(self, task: Task, actions: Sequence[Callable] = (finish, asyncio)):
+    def __init__(self, task: Task, actions: Sequence[Callable] = (finish, safe_asyncio)):
         self.task = task
         self.actions = actions
         self.shell = self._create_shell()
@@ -124,6 +201,21 @@ class IPythonCodeExecutor(CodeExecutor):
         sys.excepthook = original_excepthook # prevents it from changing traceback format globally
         for action in self.actions:
             shell.user_ns[action.__name__] = action
+        
+        # Install sandboxed import to intercept `import asyncio` statements
+        # This ensures agents can't bypass SafeAsyncio by importing directly
+        # IMPORTANT: We must create a COPY of __builtins__ to avoid modifying the global
+        # builtins which would cause infinite recursion (since _original_import would
+        # then point to our sandboxed version)
+        sandboxed_import = _make_sandboxed_import(safe_asyncio)
+        existing_builtins = shell.user_ns.get('__builtins__')
+        if isinstance(existing_builtins, dict):
+            # Create a copy of the builtins dict
+            shell.user_ns['__builtins__'] = {**existing_builtins, '__import__': sandboxed_import}
+        else:
+            # __builtins__ is a module - convert to dict with our custom import
+            shell.user_ns['__builtins__'] = {**vars(existing_builtins), '__import__': sandboxed_import}
+        
         return shell
 
     # TODO: Can make this more robust and have better error handling + sandboxing + timeouts.

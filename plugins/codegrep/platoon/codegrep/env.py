@@ -1,4 +1,4 @@
-from platoon.envs.openhands.env import OpenHandsEnv
+from platoon.openhands.env import OpenHandsEnv
 from platoon.utils.openhands_utils import is_finished
 import ast
 from openhands.sdk.conversation import get_agent_final_response
@@ -12,19 +12,35 @@ def f1_reward_function(predicted_files, true_files):
         return 1.0
     return 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
 
-def reward_function(final_message: str, instance: dict) -> tuple[float, set[str], set[str]]:
+def reward_function(
+    final_message: str, instance: dict
+) -> tuple[float, set[str], set[str]]:
     true_files = set(x[0] for x in ast.literal_eval(instance["target"]))
-    predicted_files = set()
     score = 0.0
+    repo_dir = str(instance["repo_dir"])
+    if not repo_dir.endswith("/"):
+        repo_dir += "/"
     try:
-        predicted_files = set(ast.literal_eval(final_message.split("<file-list>")[1].split("</file-list>")[0]))
-        score = f1_reward_function(predicted_files, true_files)
+        predicted_files: set[str] = set(
+            ast.literal_eval(
+                final_message.split("<file-list>")[1].split("</file-list>")[0]
+            )
+        )
+        relative_predicted_files = set()
+        for file_path in predicted_files:
+            if file_path.startswith(repo_dir):
+                relative_path = file_path[len(repo_dir) :]
+            else:
+                relative_path = file_path
+            relative_predicted_files.add(relative_path)
+        score = f1_reward_function(relative_predicted_files, true_files)
     except Exception as e:
         print(f"Error parsing final message: {e}")
-    
-    return score, predicted_files, true_files
+        return 0.0, set(), true_files
 
-class CodeIssueLocalizationEnv(OpenHandsEnv):
+    return score, relative_predicted_files, true_files
+
+class CodeGreEnv(OpenHandsEnv):
     async def evaluate(self) -> tuple[float, dict]:
         if is_finished(await self.observe()):
             finish_message = get_agent_final_response(self._conversation.state.events)
