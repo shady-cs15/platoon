@@ -19,12 +19,14 @@ def get_train_data_for_step(
     completions: dict[str, InteractionWithTokenLogpReward],
     task_id: str,
     filter_errors: bool = False,
+    trajectory_reward: float = 0.0,
     ) -> dict | None:
     
     if 'action_misc' not in step['misc'] or 'completion_id' not in step['misc']['action_misc']:
         return None
     
-    if filter_errors and (('error' in step and step['error']) or ('output' in step and step['output'] and 'traceback' in step['output'].lower())):
+    # Only filter error steps from trajectories with reward 1 (successful trajectories)
+    if filter_errors and trajectory_reward == 1 and (('error' in step and step['error']) or ('output' in step and step['output'] and 'traceback' in step['output'].lower())):
         error_info = step.get('error') or step.get('output', 'Unknown error')
         print(f"Filtering Step: Error in step for task {task_id}: {error_info}")
         return None
@@ -59,8 +61,9 @@ def get_train_data_for_trajectory(
     ) -> dict | None:
     train_data = []
     count_found_train_data = 0
+    trajectory_reward = trajectory['reward']
     for i, step in enumerate(trajectory['steps']):
-        step_train_data = get_train_data_for_step(step, completions, task_id, filter_errors)
+        step_train_data = get_train_data_for_step(step, completions, task_id, filter_errors, trajectory_reward)
         if step_train_data:
             count_found_train_data += 1
             step_train_data['rewards'] = torch.tensor([trajectory['reward']])
