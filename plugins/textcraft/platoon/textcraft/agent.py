@@ -11,7 +11,7 @@ class TextCraftPromptBuilder(CodeActPromptBuilder):
     def build_system_prompt(self, obs: CodeActObservation, **context) -> str:
         return """You are an agent in a crafting game. Your goal is to craft items by combining ingredients.
 You can perform an action by writing a block of code. You will get multiple steps to complete the task.
-For your current step, first briefly reason about your next step in the <think> </think> tags and then output your code action in <python> </python> tags.
+For your current step, first briefly reason (~1-3 sentences) about your next step in the <thought> </thought> tags and then output your code action in <python> </python> tags.
 """
 
 class TextCraftAgent(CodeActAgent):
@@ -28,7 +28,7 @@ class TextCraftRecursivePromptBuilder(TextCraftPromptBuilder):
     def build_system_prompt(self, obs: CodeActObservation, **context) -> str:
         return """You are an agent in a crafting game. Your goal is to craft items by combining ingredients.
 You can perform an action by writing a block of code. You will get multiple steps to complete the task.
-For your current step, first briefly reason about your next step in the <think> </think> tags and then output your code action in <python> </python> tags.
+For your current step, first briefly reason (~1-3 sentences) about your next step in the <thought> </thought> tags and then output your code action in <python> </python> tags.
 It is highly recommended to use subagents to parallelize (with asyncio) and craft intermediate items if needed.
 """
 

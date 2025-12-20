@@ -26,8 +26,8 @@ def main(args):
         proxy_server = trainer.proxy_server
         #workflow = TextCraftArealWorkflow(config.workflow_config, proxy_server, 'train_rollout', trainer.actor.device)
         #eval_workflow = TextCraftArealWorkflow(config.workflow_config, proxy_server, 'eval_rollout', trainer.actor.device)
-        workflow = StepWiseArealWorkflow(run_recursive_rollout, get_task, config.workflow_config, proxy_server, 'train_rollout', trainer.actor.device, filter_errors=True)
-        eval_workflow = StepWiseArealWorkflow(run_recursive_rollout, get_task, config.workflow_config, proxy_server, 'eval_rollout', trainer.actor.device)
+        workflow = StepWiseArealWorkflow(run_rollout, get_task, config.workflow_config, proxy_server, 'train_rollout', trainer.actor.device, filter_errors=True)
+        eval_workflow = StepWiseArealWorkflow(run_rollout, get_task, config.workflow_config, proxy_server, 'eval_rollout', trainer.actor.device)
         
         trainer.train(
             workflow=workflow,

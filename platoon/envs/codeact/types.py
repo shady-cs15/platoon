@@ -8,7 +8,7 @@ from platoon.envs.base import Observation, Task
 from platoon.episode.trajectory import TrajectoryStep
 
 def thought_processor(thought: str) -> str:
-    return f"<think>\n{thought.strip()}\n</think>\n"
+    return f"<thought>\n{thought.strip()}\n</thought>\n"
 
 def code_processor(code: str) -> str:
     return f"<python>\n{code.strip()}\n</python>\n"

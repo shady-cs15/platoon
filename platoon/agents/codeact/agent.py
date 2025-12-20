@@ -9,7 +9,7 @@ from platoon.utils.llm_client import LLMClient
 
 def extract_code_and_thought(raw_action: str) -> tuple[str, str]:
     # Try to extract both code and thought in the expected format
-    match = re.search(r"<think>(.*?)</think>\n<python>(.*?)</python>", raw_action, re.DOTALL)
+    match = re.search(r"<thought>(.*?)</thought>\n<python>(.*?)</python>", raw_action, re.DOTALL)
     if match:
         thought = match.group(1)
         code = match.group(2)
@@ -20,7 +20,7 @@ def extract_code_and_thought(raw_action: str) -> tuple[str, str]:
     code = ""
 
     # Try to extract thought
-    thought_match = re.search(r"<think>(.*?)</think>", raw_action, re.DOTALL)
+    thought_match = re.search(r"<thought>(.*?)</thought>", raw_action, re.DOTALL)
     if thought_match:
         thought = thought_match.group(1)
     
