@@ -1,3 +1,5 @@
+"""AReaL proxy session for tracking LLM interactions during rollouts."""
+
 from __future__ import annotations
 
 from areal.experimental.openai.proxy import (
@@ -8,6 +10,11 @@ from areal.experimental.openai.proxy import (
 
 
 class ArealProxySession(ProxySession):
+    """Async context manager for AReaL proxy sessions.
+    
+    This extends the base ProxySession to handle session lifecycle
+    and ensure proper cleanup even on exceptions.
+    """
     
     async def __aenter__(self) -> ArealProxySession:
         data = await _post_json_with_retry(
@@ -40,3 +47,4 @@ class ArealProxySession(ProxySession):
             print(f"Warning: Failed to end session {self.session_id}: {e}")
         finally:
             await self.http_session.close()
+

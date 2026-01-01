@@ -1,7 +1,11 @@
 from typing import Protocol
-from platoon.train.tinker.proxy import ModelInfo
 import tinker
 
+
 class RolloutWorkflow(Protocol):
-    async def arun_episode(self, model_info: ModelInfo, data: dict) -> list[tinker.Datum] | None:
+    """Protocol for rollout workflows used in tinker RL training.
+    
+    Implementations should receive model_info and other dependencies via constructor.
+    """
+    async def arun_episode(self, data: dict) -> list[tinker.Datum] | None:
         ...

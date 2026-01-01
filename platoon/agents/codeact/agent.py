@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 
-from platoon.agents.codeact.prompt_builder import CodeActPromptBuilder
+from platoon.agents.codeact.prompt_builder import CodeActPromptBuilder, PromptMode
 from platoon.envs.codeact import CodeActObservation, CodeActAction
 from platoon.envs.base import Task
 from platoon.utils.llm_client import LLMClient
+
 
 def extract_code_and_thought(raw_action: str) -> tuple[str, str]:
     # Try to extract both code and thought in the expected format
@@ -31,12 +32,39 @@ def extract_code_and_thought(raw_action: str) -> tuple[str, str]:
     
     return code, thought
 
-# TODO: Need to add a factory for this.
-# TODO: Let's probably get rid of kwargs
+
 class CodeActAgent:
-    def __init__(self, prompt_builder: CodeActPromptBuilder | None = None, llm_client: LLMClient | None = None, stuck_in_loop_threshold: int = 4, stuck_in_loop_window: int = 3):
+    """Agent that uses code actions in an interactive environment.
+    
+    Supports two prompt modes via the prompt_builder:
+    - "sequence_extension" (default): Uses a multi-turn conversation format where 
+      each step appends to the conversation. This enables sequence extension for 
+      efficient training - consecutive observations are prefixes of each other,
+      allowing tinker to merge consecutive steps into fewer Datums.
+    - "no_sequence_extension": Uses a single user message with the full action 
+      history embedded. This is the legacy format that rebuilds the entire prompt 
+      each step.
+    
+    Args:
+        prompt_builder: Custom prompt builder. If not provided, uses CodeActPromptBuilder
+            with the specified prompt_mode.
+        prompt_mode: The prompt format to use. Only used if prompt_builder is not provided.
+            Default is "sequence_extension".
+        llm_client: LLM client for inference.
+        stuck_in_loop_threshold: Number of repetitions to detect a loop.
+        stuck_in_loop_window: Window size for loop detection.
+    """
+    
+    def __init__(
+        self, 
+        prompt_builder: CodeActPromptBuilder | None = None, 
+        prompt_mode: PromptMode = "sequence_extension",
+        llm_client: LLMClient | None = None, 
+        stuck_in_loop_threshold: int = 4, 
+        stuck_in_loop_window: int = 3
+    ):
         if prompt_builder is None:
-            prompt_builder = CodeActPromptBuilder()
+            prompt_builder = CodeActPromptBuilder(prompt_mode=prompt_mode)
         if llm_client is None:
             llm_client = LLMClient()
 

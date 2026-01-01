@@ -1,6 +1,6 @@
 from .env import TextCraftEnv, TextCraftRecursiveEnv
 from .agent import TextCraftAgent, TextCraftRecursiveAgent
-from platoon.train.rl import RolloutConfig
+from platoon.train.areal.config_defs import RolloutConfig
 from platoon.utils.llm_client import LLMClient
 from platoon.episode.context import current_trajectory_collection
 from platoon.episode.loop import run_episode

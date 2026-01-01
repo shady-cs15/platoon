@@ -45,14 +45,20 @@ proxy_interactions: ContextVar[dict[str, TinkerLLMInteraction]] = ContextVar("pr
 class TinkerLLMProxySession:
     _token: object | None = None
     
-    async def __aenter__(self) -> TinkerLLMProxySession:
+    def __enter__(self) -> TinkerLLMProxySession:
         self._token = proxy_interactions.set({})
         return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         if self._token is not None:
             proxy_interactions.reset(self._token)
             self._token = None
+
+    async def __aenter__(self) -> TinkerLLMProxySession:
+        return self.__enter__()
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        return self.__exit__(exc_type, exc_value, traceback)
 
     @property
     def interactions(self) -> dict[str, TinkerLLMInteraction]:
@@ -109,14 +115,40 @@ class TinkerLLM(CustomLLM):
         self.top_k = top_k
         self.top_p = top_p
         self.seed = seed
+        self._version: int = 0
 
-    def update_sampling_client(self, sampling_client: tinker.SamplingClient) -> None:
+    @property
+    def version(self) -> int:
+        """Get the current checkpoint version."""
+        return self._version
+
+    def set_version(self, version: int) -> None:
+        """Set the checkpoint version.
+        
+        Args:
+            version: The version number to set.
+        """
+        self._version = version
+
+    def increment_version(self) -> int:
+        """Increment and return the checkpoint version.
+        
+        Returns:
+            The new version number after incrementing.
+        """
+        self._version += 1
+        return self._version
+
+    def update_sampling_client(self, sampling_client: tinker.SamplingClient, increment_version: bool = True) -> None:
         """Update the sampling client used for generation.
 
         Args:
             sampling_client: New Tinker sampling client to use.
+            increment_version: Whether to increment the version after update.
         """
         self.sampling_client = sampling_client
+        if increment_version:
+            self.increment_version()
 
     def _canonicalize_messages(self, messages: Any) -> List[TinkerMessage]:
         return TypeAdapter(List[TinkerMessage]).validate_python(messages)

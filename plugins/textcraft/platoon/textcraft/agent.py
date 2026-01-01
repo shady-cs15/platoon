@@ -1,12 +1,17 @@
 """TextCraft agent with recursive spawning support."""
 from __future__ import annotations
 
-from platoon.agents.codeact import CodeActAgent, CodeActPromptBuilder
+from platoon.agents.codeact import CodeActAgent, CodeActPromptBuilder, PromptMode
 from platoon.envs.codeact import CodeActObservation
 
 
 class TextCraftPromptBuilder(CodeActPromptBuilder):
-    """Prompt builder for TextCraft agent."""
+    """Prompt builder for TextCraft agent.
+    
+    Inherits prompt_mode support from CodeActPromptBuilder:
+    - "sequence_extension" (default): Multi-turn conversation for sequence extension
+    - "no_sequence_extension": Legacy single-user-message format
+    """
     
     def build_system_prompt(self, obs: CodeActObservation, **context) -> str:
         return """You are an agent in a crafting game. Your goal is to craft items by combining ingredients.
@@ -15,16 +20,18 @@ For your current step, first briefly reason (~1-3 sentences) about your next ste
 Craft ingredients if they are not already in your inventory.
 """
 
+
 class TextCraftAgent(CodeActAgent):
-    """Agent for TextCraft environment with recursive spawning support."""
+    """Agent for TextCraft environment."""
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, prompt_mode: PromptMode = "sequence_extension", **kwargs):
         if "prompt_builder" not in kwargs:
-            kwargs["prompt_builder"] = TextCraftPromptBuilder()
-        super().__init__(*args, **kwargs)
+            kwargs["prompt_builder"] = TextCraftPromptBuilder(prompt_mode=prompt_mode)
+        super().__init__(prompt_mode=prompt_mode, **kwargs)
 
 
 class TextCraftRecursivePromptBuilder(TextCraftPromptBuilder):
+    """Prompt builder for recursive TextCraft agent with subagent support."""
     
     def build_system_prompt(self, obs: CodeActObservation, **context) -> str:
         return """You are an agent in a crafting game. Your goal is to craft items by combining ingredients.
@@ -33,18 +40,19 @@ For your current step, first briefly reason (~1-3 sentences) about your next ste
 Craft ingredients if they are not already in your inventory. It is **highly recommended** to use subagents to craft ingredients if they are not already in your inventory.
 """
 
+
 class TextCraftRecursiveAgent(TextCraftAgent):
     """Agent for TextCraft environment with recursive spawning support."""
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, prompt_mode: PromptMode = "sequence_extension", **kwargs):
         if "prompt_builder" not in kwargs:
-            kwargs["prompt_builder"] = TextCraftRecursivePromptBuilder()
-        super().__init__(*args, **kwargs)
-        
+            kwargs["prompt_builder"] = TextCraftRecursivePromptBuilder(prompt_mode=prompt_mode)
+        super().__init__(prompt_mode=prompt_mode, **kwargs)
         
     async def fork(self, task) -> TextCraftRecursiveAgent:
         """Fork the agent for a subagent."""
         return TextCraftRecursiveAgent(
+            prompt_mode=self.prompt_builder.prompt_mode,
             prompt_builder=self.prompt_builder,
             llm_client=self.llm_client.fork(),
             stuck_in_loop_threshold=self.stuck_in_loop_threshold,
