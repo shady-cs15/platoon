@@ -8,7 +8,7 @@ train:
   num_epochs: 30
   num_minibatches: 1
   num_microbatches: 1
-  max_staleness: 2
+  max_staleness: 3
   lora_rank: 32
   loss_fn: cispo
   loss_fn_config:
@@ -43,8 +43,8 @@ eval:
 
 # Checkpoint configuration
 checkpoint:
-  strategy: epoch
-  every: 1
+  strategy: step
+  every: 1  # Save after every training step
   load_checkpoint_path: null
 
 # Logging
@@ -54,7 +54,7 @@ tinker_base_url: null
 # Stats and WandB configuration
 stats:
   experiment_name: textcraft-platoon-tinker
-  trial_name: grpo-trial7
+  trial_name: grpo-trial8
   wandb:
     mode: online
     project: textcraft-platoon-tinker

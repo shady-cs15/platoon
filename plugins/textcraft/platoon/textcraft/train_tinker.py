@@ -69,7 +69,7 @@ async def main(args: list[str]):
     async with trainer:
         # Create workflows - use trainer.run_log_path for run-specific output
         train_workflow = GroupRolloutWorkflow(
-            rollout_fn=run_rollout,
+            rollout_fn=run_recursive_rollout,
             get_task_fn=get_task,
             config=config.train.workflow_config,
             model_info=trainer.model_info,
@@ -80,7 +80,7 @@ async def main(args: list[str]):
         )
         
         eval_workflow = GroupRolloutWorkflow(
-            rollout_fn=run_rollout,
+            rollout_fn=run_recursive_rollout,
             get_task_fn=get_task,
             config=config.eval.workflow_config,
             model_info=trainer.model_info,

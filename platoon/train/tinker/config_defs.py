@@ -84,7 +84,7 @@ class StatsConfig:
 class WatchdogConfig:
     """Configuration for the watchdog that monitors for hangs."""
     enabled: bool = True
-    timeout_seconds: float = 900 # 15 minutes default
+    timeout_seconds: float = 600 # 10 minutes default
     exit_code: int = 2  # Exit code when watchdog kills process
 
 

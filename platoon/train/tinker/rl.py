@@ -647,7 +647,9 @@ class PlatoonTinkerRLTrainer:
         Unlike tinker_cookbook's version, this includes the wandb_run_id in the
         checkpoint loop_state to enable proper WandB run resumption.
         """
-        if i_batch > start_batch and i_batch % save_every == 0:
+        # Count steps completed since start_batch (1-indexed for human intuition)
+        steps_completed = i_batch - start_batch + 1
+        if steps_completed % save_every == 0:
             # Save a full checkpoint with loop state
             path_dict = await checkpoint_utils.save_checkpoint_async(
                 training_client=training_client,
