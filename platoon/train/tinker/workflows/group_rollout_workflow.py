@@ -124,6 +124,12 @@ class GroupRolloutWorkflow:
         num_input_tokens_per_traj = torch.tensor([float(s.num_input_tokens) for s in all_trajectory_stats])
         num_output_tokens_per_traj = torch.tensor([float(s.num_output_tokens) for s in all_trajectory_stats])
         
+        # Per-step averages (useful for understanding step-level characteristics)
+        # Avoid division by zero for trajectories with no steps
+        safe_num_steps = torch.clamp(num_steps_per_traj, min=1.0)
+        avg_input_tokens_per_step = num_input_tokens_per_traj / safe_num_steps
+        avg_output_tokens_per_step = num_output_tokens_per_traj / safe_num_steps
+        
         # Masks for per-trajectory stats
         trajectory_mask = torch.ones(len(all_trajectory_stats), dtype=torch.bool)
         
@@ -131,10 +137,14 @@ class GroupRolloutWorkflow:
             num_output_tokens_mask=trajectory_mask,
             num_input_tokens_mask=trajectory_mask,
             num_steps_mask=trajectory_mask,
+            avg_input_tokens_per_step_mask=trajectory_mask,
+            avg_output_tokens_per_step_mask=trajectory_mask,
         )
         self.tracker.stat(num_output_tokens=num_output_tokens_per_traj, denominator="num_output_tokens_mask")
         self.tracker.stat(num_input_tokens=num_input_tokens_per_traj, denominator="num_input_tokens_mask")
         self.tracker.stat(num_steps=num_steps_per_traj, denominator="num_steps_mask")
+        self.tracker.stat(avg_input_tokens_per_step=avg_input_tokens_per_step, denominator="avg_input_tokens_per_step_mask")
+        self.tracker.stat(avg_output_tokens_per_step=avg_output_tokens_per_step, denominator="avg_output_tokens_per_step_mask")
         
         # Per-rollout stats (task_reward is the root trajectory's reward, one per rollout)
         task_rewards_tensor = torch.tensor(task_rewards)
