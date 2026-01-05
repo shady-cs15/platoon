@@ -19,10 +19,12 @@ logger = getLogger("platoon.textcraft.rollout")
 async def run_rollout(task: Task, config: RolloutConfig) -> dict | TrajectoryCollection:
     agent = env = None
     try:
-        llm_client = LiteLLMClient(
+        llm_client = LLMClient(
             model=config.model_name,
-            #base_url=config.model_endpoint,
-            #api_key=config.model_api_key
+            base_url=config.model_endpoint,
+            api_key=config.model_api_key,
+            # Disable Qwen3 reasoning/thinking mode for faster inference
+            default_extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
         env = TextCraftEnv(task)
         agent = TextCraftAgent(llm_client=llm_client)
@@ -81,12 +83,14 @@ async def run_rollout(task: Task, config: RolloutConfig) -> dict | TrajectoryCol
 async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | TrajectoryCollection:
     agent = env = None
     try:
-        llm_client = LiteLLMClient(
+        llm_client = LLMClient(
             model=config.model_name,
-            #base_url=config.model_endpoint,
-            #api_key=config.model_api_key
+            base_url=config.model_endpoint,
+            api_key=config.model_api_key,
+            # Disable Qwen3 reasoning/thinking mode for faster inference
+            default_extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
-        env = TextCraftRecursiveEnv(task, subagent_launch_reward=0.2)
+        env = TextCraftRecursiveEnv(task, per_step_subagent_success_reward=0.1, per_step_subagent_reward_ceiling=0.3)
         agent = TextCraftRecursiveAgent(llm_client=llm_client)
         traj_collection = TrajectoryCollection()
         current_trajectory_collection.set(traj_collection)

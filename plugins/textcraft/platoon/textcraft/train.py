@@ -1,6 +1,12 @@
 import sys
+import logging
 from datasets import Dataset
 from areal.api.cli_args import load_expr_config
+
+# Enable debug logging for platoon workflows
+logging.basicConfig(level=logging.WARNING)  # Quiet by default
+logging.getLogger("platoon.train.areal.workflows").setLevel(logging.DEBUG)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Silence httpx spam
 
 from platoon.textcraft.tasks import get_task_ids, get_task
 from platoon.textcraft.rollout import run_rollout, run_recursive_rollout

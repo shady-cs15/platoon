@@ -1,5 +1,5 @@
 experiment_name: textcraft-reinforce-plus-plus
-trial_name: grpo-recursive-trial1
+trial_name: grpo-4b-recursive-trial-test-step-merging
 
 seed: 343
 total_train_epochs: 10
@@ -15,12 +15,12 @@ cluster:
     type: nfs
     nfs_record_root: /mnt/efs/tmp/areal/name_resolve
 
-allocation_mode: sglang:d4p1t1+d2p1t1c2
+allocation_mode: sglang:d6p1t1+d2p1t1
 
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 64
+  max_concurrent_rollouts: 64 #32 #64
   queue_size: null 
   consumer_batch_size: ${train_dataset.batch_size}
   max_head_offpolicyness: 3
@@ -39,7 +39,7 @@ workflow_config:
   rollout_config:
     model_name: ${actor.path}
     max_steps: 50
-    output_dir: /mnt/efs/tmp/areal/experiments/textcraft-grpo-recursive-trial1
+    output_dir: /mnt/efs/tmp/areal/experiments/textcraft-grpo-4b-recursive-trial-0
     verbose: True
     train: true
     timeout: 900
@@ -48,7 +48,7 @@ workflow_config:
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path: Qwen/Qwen3-4B-Instruct-2507
+  path: Qwen/Qwen3-4B-Instruct-2507 #PrimeIntellect/Qwen3-8B
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: true
@@ -57,7 +57,7 @@ actor:
     max_tokens_per_mb: 40000
   optimizer:
     type: adam
-    lr: 1e-6
+    lr: 3e-6
     weight_decay: 0.017
     beta1: 0.9
     beta2: 0.999
@@ -66,8 +66,8 @@ actor:
     gradient_clipping: 1.0
     warmup_steps_proportion: 0.001
   group_size: ${gconfig.n_samples}
-  eps_clip: 10000 #0.2
-  #eps_clip_higher: 0.26
+  eps_clip: 0.2
+  eps_clip_higher: 0.26
   temperature: ${gconfig.temperature}
   reward_scaling: 1.0
   reward_bias: 0.0
@@ -85,7 +85,7 @@ actor:
   kl_estimator: k1
   ppo_n_minibatches: 1
   recompute_logprob: true
-  use_decoupled_loss: false
+  use_decoupled_loss: true
   behav_imp_weight_cap: null
   dynamic_sampling: false
   reward_norm:

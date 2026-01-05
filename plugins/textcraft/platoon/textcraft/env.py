@@ -294,6 +294,53 @@ Example: If a recipe needs "tag:planks", use "oak_planks", "acacia_planks", "bir
 
 
 class TextCraftRecursiveCodeExecutor(TextCraftCodeExecutor):
+    def __init__(self, task: Task, recipes_dir: Path, inventory: Optional[Dict[str, int]] = None, _share_inventory: bool = False):
+        super().__init__(task, recipes_dir, inventory, _share_inventory)
+        # Track subagent outcomes for current step: (launched_count, success_count)
+        self._subagent_stats_this_step: tuple[int, int] = (0, 0)
+    
+    def reset_subagent_stats(self) -> None:
+        """Reset subagent tracking for a new step."""
+        self._subagent_stats_this_step = (0, 0)
+    
+    def get_subagent_stats(self) -> tuple[int, int]:
+        """Get (launched_count, success_count) for current step."""
+        return self._subagent_stats_this_step
+    
+    async def launch_subagent(self, targets: Dict[str, int], num_steps: int, context: str = "") -> str:
+        """Launch a subagent and track whether it succeeded."""
+        from platoon.episode.context import current_trajectory_collection, current_trajectory
+        
+        # Get current trajectory to identify child
+        traj_collection = current_trajectory_collection.get()
+        current_traj = current_trajectory.get()
+        
+        # Track trajectories before launch to find the new one
+        traj_ids_before = set(traj_collection.trajectories.keys())
+        
+        # Call parent's launch_subagent
+        result = await super().launch_subagent(targets, num_steps, context)
+        
+        # Find the new child trajectory and check if it succeeded at its task
+        launched, succeeded = self._subagent_stats_this_step
+        launched += 1
+        
+        for traj_id, traj in traj_collection.trajectories.items():
+            if traj_id not in traj_ids_before:
+                # This is a new trajectory - check if it's our child
+                if traj.parent_info and traj.parent_info.id == current_traj.id:
+                    # Check the final step's reward_misc for actual task success
+                    # (not traj.reward, which includes subagent bonuses)
+                    if traj.steps:
+                        final_step = traj.steps[-1]
+                        reward_misc = final_step.misc.get('reward_misc', {})
+                        if reward_misc.get('success', False):
+                            succeeded += 1
+                    break
+        
+        self._subagent_stats_this_step = (launched, succeeded)
+        return result
+    
     async def describe_action_space(self) -> str:
         return """Available Actions:
 1. craft(ingredients: dict, target: tuple[str, int]) -> str
@@ -333,7 +380,16 @@ Example: If a recipe needs "tag:planks", use "oak_planks", "acacia_planks", "bir
 
 Note that asyncio has already been imported for you. You can launch subagents using `await launch_subagent` or `asyncio.create_task` + `await asyncio.gather` to launch multiple subagents concurrently.
 """
-        
+    
+    async def fork(self, task: Task) -> 'TextCraftRecursiveCodeExecutor':
+        """Fork the executor for a subagent."""
+        return TextCraftRecursiveCodeExecutor(
+            task=task,
+            recipes_dir=self.recipes_dir,
+            inventory=self.inventory,
+            _share_inventory=True
+        )
+
 
 class TextCraftEnv(CodeActEnv):
     """Environment for TextCraft crafting tasks with recursive agent spawning."""
@@ -476,7 +532,8 @@ class TextCraftRecursiveEnv(TextCraftEnv):
         recipes_dir: Optional[Path] = None, 
         initial_inventory: Optional[Dict[str, int]] = None, 
         _share_inventory: bool = False,
-        subagent_launch_reward: float = 0.0,
+        per_step_subagent_success_reward: float = 0.0,
+        per_step_subagent_reward_ceiling: float = float('inf'),
     ):
         super().__init__(task, recipes_dir, initial_inventory, _share_inventory=_share_inventory)
         # Use self._recipes_dir and self._initial_inventory which were set by parent class
@@ -487,26 +544,33 @@ class TextCraftRecursiveEnv(TextCraftEnv):
             self._code_executor.inventory,  # Use parent's executor inventory (already shared if _share_inventory=True)
             _share_inventory=True  # Always share since we're using parent's inventory dict
         )
-        self._subagent_launch_reward = subagent_launch_reward
+        self._per_step_subagent_success_reward = per_step_subagent_success_reward
+        self._per_step_subagent_reward_ceiling = per_step_subagent_reward_ceiling
 
-    def _current_step_launched_subagent(self) -> bool:
-        """Check if the current step successfully launched a subagent."""
-        if not self._state.history:
-            return False
-        current_step = self._state.history[-1]
-        return current_step.output and "Budget used by subagent" in current_step.output
+    def _get_subagent_stats_and_reset(self) -> tuple[int, int]:
+        """Get (launched_count, success_count) for current step and reset for next step."""
+        stats = self._code_executor.get_subagent_stats()
+        self._code_executor.reset_subagent_stats()
+        return stats
 
     async def evaluate(self) -> Tuple[float, dict]:
         score, reward_misc = await super().evaluate()
         
-        # Add reward for each step that successfully launches a subagent
-        if self._subagent_launch_reward > 0 and self._current_step_launched_subagent():
-            score += self._subagent_launch_reward
-            reward_misc["subagent_launched"] = True
-            reward_misc["reward/subagent_launch"] = self._subagent_launch_reward
-        else:
-            reward_misc["subagent_launched"] = False
-            reward_misc["reward/subagent_launch"] = 0.0
+        # Get subagent stats for this step (also resets for next step)
+        launched, succeeded = self._get_subagent_stats_and_reset()
+        
+        # Add reward for successful subagents (scaled by count, capped at ceiling)
+        subagent_reward = 0.0
+        if self._per_step_subagent_success_reward > 0 and succeeded > 0:
+            subagent_reward = min(
+                self._per_step_subagent_success_reward * succeeded,
+                self._per_step_subagent_reward_ceiling
+            )
+            score += subagent_reward
+        
+        reward_misc["subagent_launched"] = launched
+        reward_misc["subagent_succeeded"] = succeeded
+        reward_misc["reward/subagent_success"] = subagent_reward
         
         return score, reward_misc
     
@@ -524,7 +588,7 @@ class TextCraftRecursiveEnv(TextCraftEnv):
             })
         
         # Create forked environment sharing the same inventory reference
-        # Note: subagent_launch_reward is NOT propagated - each trajectory is evaluated independently
+        # Note: subagent rewards are NOT propagated - each trajectory is evaluated independently
         forked_env = TextCraftRecursiveEnv(
             task=task,
             recipes_dir=self._recipes_dir,
