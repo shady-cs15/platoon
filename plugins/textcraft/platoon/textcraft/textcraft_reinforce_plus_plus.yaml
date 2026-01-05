@@ -1,5 +1,5 @@
 experiment_name: textcraft-reinforce-plus-plus
-trial_name: grpo-4b-recursive-trial-test-step-merging
+trial_name: grpo-8b-instruct-recursive-trial-0
 
 seed: 343
 total_train_epochs: 10
@@ -20,7 +20,7 @@ allocation_mode: sglang:d6p1t1+d2p1t1
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 64 #32 #64
+  max_concurrent_rollouts: 36
   queue_size: null 
   consumer_batch_size: ${train_dataset.batch_size}
   max_head_offpolicyness: 3
@@ -39,7 +39,7 @@ workflow_config:
   rollout_config:
     model_name: ${actor.path}
     max_steps: 50
-    output_dir: /mnt/efs/tmp/areal/experiments/textcraft-grpo-4b-recursive-trial-0
+    output_dir: /mnt/efs/tmp/areal/experiments/textcraft-grpo-8b-instruct-recursive-trial-0
     verbose: True
     train: true
     timeout: 900
@@ -48,7 +48,7 @@ workflow_config:
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path: Qwen/Qwen3-4B-Instruct-2507 #PrimeIntellect/Qwen3-8B
+  path: /mnt/efs/custom_models/Qwen-8B-Instruct #OpenPipe/Qwen3-14B-Instruct
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: true

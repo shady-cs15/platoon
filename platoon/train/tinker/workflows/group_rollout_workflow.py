@@ -216,8 +216,9 @@ class GroupRolloutWorkflow:
         # Compute group-centered advantages
         mean_task_reward = sum(task_rewards) / len(task_rewards) if task_rewards else 0.0
         
-        # Check if all rewards are the same (no learning signal)
-        if len(task_rewards) > 1 and max(task_rewards) == min(task_rewards):
+        # Check if all rewards are the same across ALL trajectories in the group, including any subagent trajectories (no learning signal)
+        all_trajectory_rewards = [stats.reward for stats in all_trajectory_stats]
+        if len(all_trajectory_rewards) > 1 and max(all_trajectory_rewards) == min(all_trajectory_rewards):
             logger.debug(f"All rewards are the same for task {data['task_id']}: {mean_task_reward:.2f}")
             return None
         

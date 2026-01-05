@@ -252,7 +252,7 @@ class TextCraftCodeExecutor(IPythonCodeExecutor, ForkableCodeExecutor):
     
     async def describe_action_space(self) -> str:
         return """Available Actions:
-1. craft(ingredients: dict, target: tuple[str, int]) -> str
+1. def craft(ingredients: dict, target: tuple[str, int]) -> str
    - Craft an item using ingredients dictionary and target (item_name, total_count)
    - target_count is the TOTAL number of items to produce (not recipe executions)
    - target_count MUST be evenly divisible by the recipe's result count
@@ -260,22 +260,22 @@ class TextCraftCodeExecutor(IPythonCodeExecutor, ForkableCodeExecutor):
    - Example: craft({"stick": 2, "oak_planks": 3}, ("wooden_pickaxe", 1))
    - Example: craft({"oak_log": 4}, ("oak_planks", 16))  # 4 logs → 16 planks (4 items per craft)
 
-2. get_info(items: list) -> list[dict]
+2. def get_info(items: list) -> list[dict]
    - Get information about items (recipes, whether they can be crafted, etc.)
-   - Example: get_info(["yellow_dye", "yellow_terracotta"])
+   - Example: get_info(["yellow_dye", "yellow_terracotta", "tag:planks"])
 
-3. finish(message: str) -> str
+3. def finish(message: str) -> str
    - Complete the task with a message
    - Example: finish("Successfully crafted all required items")
 
-4. view_inventory() -> dict
+4. def view_inventory() -> dict
    - View your current inventory
    - Example: inv = view_inventory()
 
 IMPORTANT - Tag-based Ingredients:
 Some recipes use "tag:X" ingredients (e.g., "tag:planks", "tag:logs"). These are ingredient categories.
 When crafting, you must provide a CONCRETE item from that category, NOT the tag name itself.
-Use get_info() to see which concrete items satisfy each tag. Check your inventory for available items.
+Use get_info(["tag:X"]) to see which concrete items satisfy tag:X. Check your inventory for available items.
 Example: If a recipe needs "tag:planks", use "oak_planks", "acacia_planks", "birch_planks", etc.
 """
     
@@ -343,7 +343,7 @@ class TextCraftRecursiveCodeExecutor(TextCraftCodeExecutor):
     
     async def describe_action_space(self) -> str:
         return """Available Actions:
-1. craft(ingredients: dict, target: tuple[str, int]) -> str
+1. def craft(ingredients: dict, target: tuple[str, int]) -> str
    - Craft an item using ingredients dictionary and target (item_name, total_count)
    - target_count is the TOTAL number of items to produce (not recipe executions)
    - target_count MUST be evenly divisible by the recipe's result count
@@ -351,15 +351,15 @@ class TextCraftRecursiveCodeExecutor(TextCraftCodeExecutor):
    - Example: craft({"stick": 2, "oak_planks": 3}, ("wooden_pickaxe", 1))
    - Example: craft({"oak_log": 4}, ("oak_planks", 16))  # 4 logs → 16 planks (4 items per craft)
 
-2. get_info(items: list) -> list[dict]
+2. def get_info(items: list) -> list[dict]
    - Get information about items (recipes, whether they can be crafted, etc.)
-   - Example: get_info(["yellow_dye", "yellow_terracotta"])
+   - Example: get_info(["yellow_dye", "yellow_terracotta", "tag:planks"])
 
-3. finish(message: str) -> str
+3. def finish(message: str) -> str
    - Complete the task with a message
    - Example: finish("Successfully crafted all required items")
 
-4. await launch_subagent(targets: dict, num_steps: int, context: str = "") -> str
+4. async def launch_subagent(targets: dict, num_steps: int, context: str = "") -> str
    - Launch a subagent to craft specific targets
    - Example: await launch_subagent({"yellow_dye": 1, "stick": 2}, 20)
    - The subagent will have access to the same inventory and recipes
@@ -368,14 +368,14 @@ class TextCraftRecursiveCodeExecutor(TextCraftCodeExecutor):
    - You optionally can provide a context string to the subagent with a summary of any useful context you have gathered for its task,
         to help reduce redundant actions.
 
-5. view_inventory() -> dict
+5. def view_inventory() -> dict
    - View your current inventory
    - Example: inv = view_inventory()
 
 IMPORTANT - Tag-based Ingredients:
 Some recipes use "tag:X" ingredients (e.g., "tag:planks", "tag:logs"). These are ingredient categories.
 When crafting, you must provide a CONCRETE item from that category, NOT the tag name itself.
-Use get_info() to see which concrete items satisfy each tag. Check your inventory for available items.
+Use get_info(["tag:X"]) to see which concrete items satisfy tag:X. Check your inventory for available items.
 Example: If a recipe needs "tag:planks", use "oak_planks", "acacia_planks", "birch_planks", etc.
 
 Note that asyncio has already been imported for you. You can launch subagents using `await launch_subagent` or `asyncio.create_task` + `await asyncio.gather` to launch multiple subagents concurrently.
