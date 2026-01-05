@@ -221,6 +221,32 @@ def get_train_data_for_trajectory(
             num_merged += 1
         else:
             # New sequence doesn't extend current - flush and start new
+            #Debug: show why prefix check failed (only for first failure per trajectory)
+            # if num_merged == 0 and len(train_data) == 0:
+            #     acc_len = len(accumulator.full_sequence)
+            #     ob_len = len(ob_tokens)
+            #     # Check where they diverge
+            #     diverge_idx = 0
+            #     for idx in range(min(acc_len, ob_len)):
+            #         if accumulator.full_sequence[idx] != ob_tokens[idx]:
+            #             diverge_idx = idx
+            #             break
+            #     else:
+            #         diverge_idx = min(acc_len, ob_len)
+            #     print(f"[MergeDebug] Task {task_id}: Prefix check failed at step {i}")
+            #     print(f"  accumulated_len={acc_len}, observation_len={ob_len}, diverge_at={diverge_idx}")
+            #     # completion is already the ModelResponse object
+            #     tokenizer = getattr(completion, 'tokenizer', None)
+            #     if tokenizer is not None and diverge_idx < acc_len and diverge_idx < ob_len:
+            #         # Show tokens and decoded text around divergence point
+            #         start = max(0, diverge_idx - 10)
+            #         end = min(diverge_idx + 10, min(acc_len, ob_len))
+            #         acc_slice = accumulator.full_sequence[start:end]
+            #         ob_slice = ob_tokens[start:end]
+            #         print(f"  accumulated[{start}:{end}] tokens: {acc_slice}")
+            #         print(f"  accumulated[{start}:{end}] decoded: {repr(tokenizer.decode(acc_slice))}")
+            #         print(f"  observation[{start}:{end}] tokens: {ob_slice}")
+            #         print(f"  observation[{start}:{end}] decoded: {repr(tokenizer.decode(ob_slice))}")
             train_data.append(accumulator.to_train_data(trajectory_reward))
             accumulator.clear()
             delta_ob_tokens = ob_tokens
@@ -244,8 +270,8 @@ def get_train_data_for_trajectory(
     if accumulator.full_sequence:
         train_data.append(accumulator.to_train_data(trajectory_reward))
     
-    logger.debug(
-        f"Task {task_id} trajectory {trajectory_id}: "
+    print(
+        f"[DataProcessing] Task {task_id} trajectory {trajectory_id}: "
         f"Found {count_found} steps, merged {num_merged}, produced {len(train_data)} datums"
     )
     
@@ -253,8 +279,16 @@ def get_train_data_for_trajectory(
         logger.debug(f"No train data found for trajectory {trajectory_id} for task {task_id}")
         return None
     
-    return concat_fn(train_data) | {
+    concat_result = concat_fn(train_data)
+    # Sum token counts across all sequences to get trajectory-level totals
+    # This ensures num_input_tokens and num_output_tokens have shape [1] like num_steps
+    trajectory_num_input_tokens = concat_result['num_input_tokens'].sum().unsqueeze(0)
+    trajectory_num_output_tokens = concat_result['num_output_tokens'].sum().unsqueeze(0)
+    
+    return concat_result | {
         'num_steps': torch.tensor([float(len(trajectory['steps']))]),
+        'num_input_tokens': trajectory_num_input_tokens,
+        'num_output_tokens': trajectory_num_output_tokens,
         **{key: torch.tensor(value).unsqueeze(0) for key, value in trajectory_rewards_dict.items()}
     }
 
@@ -297,8 +331,16 @@ def _get_train_data_for_trajectory_no_merge(
         logger.debug(f"No train data found for trajectory {trajectory_id} for task {task_id}")
         return None
     
-    return concat_fn(train_data) | { 
+    concat_result = concat_fn(train_data)
+    # Sum token counts across all sequences to get trajectory-level totals
+    # This ensures num_input_tokens and num_output_tokens have shape [1] like num_steps
+    trajectory_num_input_tokens = concat_result['num_input_tokens'].sum().unsqueeze(0)
+    trajectory_num_output_tokens = concat_result['num_output_tokens'].sum().unsqueeze(0)
+    
+    return concat_result | { 
         'num_steps': torch.tensor([float(len(trajectory['steps']))]),
+        'num_input_tokens': trajectory_num_input_tokens,
+        'num_output_tokens': trajectory_num_output_tokens,
         **{key: torch.tensor(value).unsqueeze(0) for key, value in trajectory_rewards_dict.items()}
     }
 

@@ -75,7 +75,7 @@ class StepWiseArealWorkflow(RolloutWorkflow):
         )
         results = [result for result in results if result is not None]
         if not results:
-            logger.debug(f"No results found for task {data['task_id']}")
+            print(f"[StepWiseWorkflow] No results found for task {data['task_id']}")
             return None
         
         train_data = concat_padded_tensors(results)
@@ -137,7 +137,7 @@ class StepWiseArealWorkflow(RolloutWorkflow):
                 tracker.stat(**{key: value.to(self.device)}, denominator=f"{key}_mask")
 
         if train_data['rewards'].max() == train_data['rewards'].min() and len(results) > 1:
-            logger.debug(f"All rewards are the same for task {data['task_id']}: {mean_unprocessed_reward.item():.2f}")
+            print(f"[StepWiseWorkflow] All rewards are the same for task {data['task_id']}: {mean_unprocessed_reward.item():.2f}")
             return None
 
         return train_data
@@ -167,7 +167,7 @@ class StepWiseArealWorkflow(RolloutWorkflow):
                 results = await asyncio.create_task(self.rollout_fn(task, config.rollout_config))
                 
                 if not results['trajectories']:
-                    logger.debug(f"No trajectories found for task {task_id} and rollout {rollout_number}")
+                    print(f"[StepWiseWorkflow] No trajectories found for task {task_id} and rollout {rollout_number}")
                     return None
 
                 # Get completions from proxy server session cache
@@ -179,11 +179,13 @@ class StepWiseArealWorkflow(RolloutWorkflow):
                 )
                 
                 if train_data is None:
-                    logger.debug(f"No train data found for task {task_id} and rollout {rollout_number}")
+                    print(f"[StepWiseWorkflow] No train data found for task {task_id} and rollout {rollout_number}")
                     return None
             
             return train_data
             
         except Exception as e:
-            logger.exception(f"Error in areal workflow for task {task_id} and rollout {rollout_number}: {e}")
+            import traceback
+            print(f"[StepWiseWorkflow] Error in areal workflow for task {task_id} and rollout {rollout_number}: {e}")
+            traceback.print_exc()
             return None

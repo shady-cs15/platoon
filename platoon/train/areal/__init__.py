@@ -3,6 +3,10 @@
 This module provides the AReaL-based RL trainer for distributed training.
 """
 
+# Apply areal patches before importing areal-dependent modules
+from platoon.train.areal.patches import apply_all_patches
+apply_all_patches()
+
 from platoon.train.areal.config_defs import (
     PlatoonArealRLTrainerConfig,
     RolloutConfig,

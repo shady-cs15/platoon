@@ -29,6 +29,7 @@ class LLMClient:
         api_key: str | None = None,
         model: str = "neulab/claude-sonnet-4-20250514",
         base_url: str | None = None,
+        default_extra_body: dict | None = None,
     ):
         """Initialize the LLM client.
 
@@ -37,6 +38,8 @@ class LLMClient:
             model: The model to use for completions.
             base_url: Base URL for the API endpoint. If None, will try to get from
                 OPENAI_BASE_URL env var.
+            default_extra_body: Default extra_body to pass to all API calls. Useful for
+                setting chat_template_kwargs like {"enable_thinking": False} for Qwen3.
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -55,6 +58,7 @@ class LLMClient:
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         self.async_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         self.model = model
+        self.default_extra_body = default_extra_body or {}
 
     def chat_completion(
         self,
@@ -131,6 +135,11 @@ class LLMClient:
                 if isinstance(message["content"], str):
                     message["content"] = [{"type": "text", "text": message["content"]}]
             messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}
+
+        # Merge default_extra_body with any extra_body passed in kwargs
+        extra_body = {**self.default_extra_body, **kwargs.pop("extra_body", {})}
+        if extra_body:
+            kwargs["extra_body"] = extra_body
 
         try:
             response: ChatCompletion = await self.async_client.chat.completions.create(
@@ -254,7 +263,7 @@ class LLMClient:
         await self.async_client.close()
         
     def fork(self) -> LLMClient:
-        return LLMClient(api_key=self.api_key, model=self.model, base_url=self.base_url)
+        return LLMClient(api_key=self.api_key, model=self.model, base_url=self.base_url, default_extra_body=self.default_extra_body)
 
 
 
