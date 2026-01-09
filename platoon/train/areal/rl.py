@@ -29,7 +29,7 @@ from areal.utils.stats_logger import StatsLogger
 
 from platoon.train.areal.actor import create_actor
 from platoon.train.areal.config_defs import PlatoonArealRLTrainerConfig
-from platoon.utils.train import set_expandable_segments
+from platoon.utils.train import bcast_and_split_from_rank0, set_expandable_segments
 
 logger = logging.getLogger("Platoon AReaL RL Trainer")
 
@@ -69,6 +69,12 @@ class PlatoonArealRLTrainer:
         parallel_strategy = allocation_mode.train
         assert parallel_strategy is not None
         
+        # LoRA-specific validation
+        self.use_lora = config.use_lora
+        if self.use_lora:
+            if parallel_strategy.data_parallel_size != parallel_strategy.world_size:
+                raise ValueError("LoRA does not support parallelism other than FSDP.")
+        
         self.actor = create_actor(
             config=config.actor,
             loss_fn_config=config.loss_fn_config,
@@ -76,13 +82,23 @@ class PlatoonArealRLTrainer:
         self.actor.create_process_group(parallel_strategy=parallel_strategy)
         
         # Create dataloaders
+        # NOTE: For LoRA, only rank 0 submits rollouts due to a known bug with
+        # multi-rank LoRA inference. We use rank=0, world_size=1 for dataloaders
+        # and broadcast the batch to all ranks after rollout.
+        if self.use_lora:
+            dataloader_num_replicas = 1
+            dataloader_rank = 0
+        else:
+            dataloader_num_replicas = self.actor.data_parallel_world_size
+            dataloader_rank = self.actor.data_parallel_rank
+            
         self.train_dataloader = StatefulDataLoader(
             train_dataset,
-            batch_size=config.train_dataset.batch_size // self.actor.data_parallel_world_size,
+            batch_size=config.train_dataset.batch_size // dataloader_num_replicas,
             sampler=DistributedSampler(
                 train_dataset, 
-                num_replicas=self.actor.data_parallel_world_size, 
-                rank=self.actor.data_parallel_rank,
+                num_replicas=dataloader_num_replicas, 
+                rank=dataloader_rank,
                 shuffle=config.train_dataset.shuffle,
                 drop_last=config.train_dataset.drop_last,
             ),
@@ -92,11 +108,11 @@ class PlatoonArealRLTrainer:
         
         self.val_dataloader = StatefulDataLoader(
             val_dataset,
-            batch_size=config.valid_dataset.batch_size // self.actor.data_parallel_world_size,
+            batch_size=config.valid_dataset.batch_size // dataloader_num_replicas,
             sampler=DistributedSampler(
                 val_dataset, 
-                num_replicas=self.actor.data_parallel_world_size, 
-                rank=self.actor.data_parallel_rank,
+                num_replicas=dataloader_num_replicas, 
+                rank=dataloader_rank,
                 shuffle=config.valid_dataset.shuffle,
                 drop_last=config.valid_dataset.drop_last,
             ),
@@ -111,14 +127,25 @@ class PlatoonArealRLTrainer:
         )
         
         # Initialize rollout engines
+        # NOTE: For LoRA, use train_data_parallel_size=1 since only rank 0 submits
         self.rollout = RemoteSGLangEngine(config.rollout)
-        self.rollout.initialize(train_data_parallel_size=parallel_strategy.dp_size)
+        rollout_dp_size = 1 if self.use_lora else parallel_strategy.dp_size
+        self.rollout.initialize(train_data_parallel_size=rollout_dp_size)
         self.eval_rollout = RemoteSGLangEngine(deepcopy(config.rollout))
         # NOTE: eval does not have any offpolicyness control
         self.eval_rollout.config.max_head_offpolicyness = int(1e12)
         self.eval_rollout.initialize()
         
-        self.weight_update_meta = WeightUpdateMeta.from_fsdp_xccl(allocation_mode)
+        # Weight update meta differs for LoRA vs standard training
+        if self.use_lora:
+            self.weight_update_meta = WeightUpdateMeta.from_disk(
+                config.saver.experiment_name,
+                config.saver.trial_name,
+                config.saver.fileroot,
+                use_lora=True,
+            )
+        else:
+            self.weight_update_meta = WeightUpdateMeta.from_fsdp_xccl(allocation_mode)
 
         self.actor.initialize(None, self.ft_spec)
         self.actor.connect_engine(self.rollout, self.weight_update_meta)
@@ -195,12 +222,35 @@ class PlatoonArealRLTrainer:
             )
             
             with stats_tracker.record_timing("rollout"):
-                batch = self.actor.prepare_batch(
-                    self.train_dataloader,
-                    workflow=workflow,
-                    should_accept_fn=lambda sample: True,
-                )
- 
+                if self.use_lora:
+                    # NOTE: For LoRA, only rank 0 submits rollouts due to a known bug
+                    # where multi-rank LoRA inference has concurrency issues.
+                    # The batch is then broadcast and split across all ranks.
+                    batch = None
+                    if dist.get_rank() == 0:
+                        batch = self.rollout.prepare_batch(
+                            self.train_dataloader,
+                            workflow=workflow,
+                            should_accept_fn=lambda sample: True,
+                            group_size=config.gconfig.n_samples,
+                        )
+                    batch = bcast_and_split_from_rank0(
+                        batch,
+                        granularity=config.gconfig.n_samples,
+                        device=self.actor.device,
+                    )
+                else:
+                    batch = self.actor.prepare_batch(
+                        self.train_dataloader,
+                        workflow=workflow,
+                        should_accept_fn=lambda sample: True,
+                    )
+            
+            if self.use_lora:
+                # Synchronize after rollout
+                dist.barrier(device_ids=[self.actor.device.index])
+                current_platform.synchronize()
+
             if config.actor.recompute_logprob or config.actor.use_decoupled_loss:
                 with stats_tracker.record_timing("recompute_logp"):
                     logp = self.actor.compute_logp(batch)
@@ -281,9 +331,19 @@ class PlatoonArealRLTrainer:
             self.rollout.resume()
     
     def _run_evaluation(self, eval_workflow: RolloutWorkflow, epoch: int, step: int, global_step: int):
-        """Run evaluation if this process is the data parallel head."""
+        """Run evaluation if this process is the data parallel head.
+        
+        For LoRA mode, only rank 0 submits evaluation requests due to the same
+        concurrency issues as training rollout.
+        """
         def evaluate_fn():
-            if self.actor.is_data_parallel_head():
+            # For LoRA, only rank 0 submits; otherwise use data parallel head
+            should_submit = (
+                dist.get_rank() == 0 if self.use_lora 
+                else self.actor.is_data_parallel_head()
+            )
+            
+            if should_submit:
                 print("Evaluating...")
                 cnt = 0
                 for data in self.val_dataloader:

@@ -5,8 +5,12 @@ import math
 from dataclasses import dataclass, field
 from areal.utils.data import (
     all_gather_tensor_container,
-    concat_padded_tensors,  
+    broadcast_tensor_container,
+    concat_padded_tensors,
+    get_batch_size,
+    tensor_container_to,
 )
+from areal.core.dist_rollout import redistribute
 from areal.api.cli_args import InferenceEngineConfig
 
 
@@ -21,6 +25,40 @@ def set_expandable_segments(enable: bool) -> None:
         enable (bool): Whether to enable expandable segments. Used to avoid OOM.
     """
     torch.cuda.memory._set_allocator_settings(f"expandable_segments:{enable}")
+
+
+def bcast_and_split_from_rank0(
+    batch: Dict[str, Any] | None,
+    granularity: int,
+    device: torch.device | None = None,
+) -> Dict[str, Any]:
+    """Broadcast batch from rank 0 and split across all ranks.
+    
+    This is used for LoRA training where only rank 0 submits rollouts
+    due to a known bug with multi-rank LoRA inference.
+    
+    Args:
+        batch: The batch dict (only valid on rank 0, None on other ranks)
+        granularity: Number of samples to keep together (e.g., group_size for GRPO)
+        device: Device to move tensors to after broadcast
+        
+    Returns:
+        The local shard of the batch for this rank
+    """
+    batch = broadcast_tensor_container(batch, src_rank=0)
+    if device is not None:
+        batch = tensor_container_to(batch, device)
+    bs = get_batch_size(batch)
+    world_size = dist.get_world_size()
+    assert bs % world_size == 0, f"Batch size {bs} must be divisible by world_size {world_size}"
+    bs_per_rank = bs // world_size
+    rank = dist.get_rank()
+    local_batch = []
+    for i in range(rank * bs_per_rank, (rank + 1) * bs_per_rank):
+        local_batch.append({k: v[i : i + 1] for k, v in batch.items()})
+    local_batch = concat_padded_tensors(local_batch)
+    # Make the sequences on each rank more balanced.
+    return redistribute(local_batch, granularity=granularity).data
     
 
 def _canonicalize_container_keys(x: Any) -> Any:
