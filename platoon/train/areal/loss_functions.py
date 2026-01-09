@@ -204,6 +204,7 @@ def cispo_loss_fn(
     
     stats_tracker.stat(
         importance_weight=ratio.detach(),
+        clamped_importance_weight=cispo_coefficient,
         approx_kl=log_ratio.detach(),
         new_logp=logprobs.detach(),
         old_logp=old_logprobs,
