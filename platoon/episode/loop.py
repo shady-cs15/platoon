@@ -1,20 +1,21 @@
 import asyncio
 import traceback
 
-from platoon.episode.trajectory import StepBudgetTracker, Trajectory, TrajectoryCollection
 from platoon.agents.base import Agent
 from platoon.envs.base import Env, Observation
 from platoon.episode.context import (
+    budget_tracker,
     current_agent,
     current_env,
     current_trajectory,
     current_trajectory_collection,
     error_message,
-    budget_tracker,
     finish_message,
 )
+from platoon.episode.trajectory import StepBudgetTracker, Trajectory, TrajectoryCollection
 
-# NOTE: This function should be called using asyncio.create_task() to make sure edits to contextvars do not leak to parent context
+
+# NOTE: Call using asyncio.create_task() to make sure edits to contextvars do not leak to parent context
 async def run_episode(agent: Agent, env: Env, verbose: bool = False, timeout: int = 300) -> Trajectory:
     try:
         step_count = 0
@@ -47,9 +48,10 @@ async def run_episode(agent: Agent, env: Env, verbose: bool = False, timeout: in
         traj = current_trajectory.get()
         traj.error_message = error_message.get()
         traj.finish_message = finish_message.get()
-        # TODO: We could move out trajectory finish logic (adding up rewards, setting finish message, etc.) from env logic to here.
+        # TODO: We could move trajectory finish logic (rewards, finish message, etc.) from env to here.
         traj_collection.finish_trajectory(traj.id)
         return traj
+
 
 def set_context_vars(agent: Agent, env: Env):
     finish_message.set(None)
@@ -70,7 +72,7 @@ def set_context_vars(agent: Agent, env: Env):
 def halt_episode(obs: Observation) -> bool:
     exhausted_budget = budget_tracker.get().remaining_budget() <= 0
     if exhausted_budget:
-        error_message.set(f"WARNING: Exhausted budget when running episode. Halting episode; task may be incomplete.")
+        error_message.set("WARNING: Exhausted budget when running episode. Halting episode; task may be incomplete.")
     if finish_message.get(None) is not None:
         obs.finished = True
     return obs.finished or exhausted_budget

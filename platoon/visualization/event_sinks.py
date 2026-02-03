@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import json
 import queue
-from dataclasses import asdict, is_dataclass
 import time
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict
 
-from platoon.episode.trajectory import TrajectoryEventHandler, Trajectory
+from pydantic import BaseModel  # TODO: Add pydantic as explicit dependency?
+
 from platoon.envs.base import Task
-from pydantic import BaseModel # TODO: Add pydantic as explicit dependency?
+from platoon.episode.trajectory import Trajectory, TrajectoryEventHandler
 
 
 def _to_jsonable(obj: Any) -> Any:
@@ -33,7 +34,14 @@ class JsonlFileSink(TrajectoryEventHandler):
     Each line is a dict with at least keys: {"type": str, ...}.
     """
 
-    def __init__(self, filepath: str | Path, create_parents: bool = True, *, collection_id: str | None = None, process_id: str | int | None = None) -> None:
+    def __init__(
+        self,
+        filepath: str | Path,
+        create_parents: bool = True,
+        *,
+        collection_id: str | None = None,
+        process_id: str | int | None = None,
+    ) -> None:
         self.filepath = Path(filepath)
         if self.filepath.exists():
             self.filepath.unlink()
@@ -53,84 +61,47 @@ class JsonlFileSink(TrajectoryEventHandler):
             f.write(json.dumps(record) + "\n")
 
     def on_trajectory_created(self, trajectory: Trajectory) -> None:  # type: ignore[override]
-        self._write({
-            "type": "trajectory_created",
-            "trajectory": _to_jsonable(trajectory),
-        })
+        self._write(
+            {
+                "type": "trajectory_created",
+                "trajectory": _to_jsonable(trajectory),
+            }
+        )
 
     def on_trajectory_task_set(self, trajectory: Trajectory, task: Task | None) -> None:  # type: ignore[override]
-        self._write({
-            "type": "trajectory_task_set",
-            "trajectory_id": trajectory.id,
-            "task": _to_jsonable(task),
-        })
-
-    def on_trajectory_step_added(self, trajectory: Trajectory, step: Any) -> None:  # type: ignore[override]
-        self._write({
-            "type": "trajectory_step_added",
-            "trajectory_id": trajectory.id,
-            # zero-based index for steps in UI/consumers
-            "step_index": len(trajectory.steps) - 1,
-            "step": _to_jsonable(step),
-            "reward": trajectory.reward,
-            # propagate fields that may update when a step is added
-            "finish_message": trajectory.finish_message,
-            "error_message": trajectory.error_message,
-        })
-
-    def on_trajectory_finished(self, trajectory: Trajectory) -> None:  # type: ignore[override]
-        self._write({
-            "type": "trajectory_finished",
-            "trajectory_id": trajectory.id,
-            "reward": trajectory.reward,
-            "finish_message": trajectory.finish_message,
-            "error_message": trajectory.error_message,
-        })
-
-
-class MarkdownFileSink(TrajectoryEventHandler):
-    """Writes a human-readable Markdown log similar to the legacy output_file behavior."""
-
-    def __init__(self, filepath: str | Path, create_parents: bool = True) -> None:
-        self.filepath = Path(filepath)
-        if create_parents:
-            self.filepath.parent.mkdir(parents=True, exist_ok=True)
-        # initialize header
-        with self.filepath.open("w", encoding="utf-8") as f:
-            f.write("## Trajectory Collection\n")
-
-    def _write(self, text: str) -> None:
-        with self.filepath.open("a", encoding="utf-8") as f:
-            f.write(text)
-
-    def on_trajectory_created(self, trajectory: Trajectory) -> None:  # type: ignore[override]
-        self._write(f"## Created new trajectory: {trajectory.id}\n")
-        if trajectory.parent_info is not None:
-            self._write(
-                f"Forked from {trajectory.parent_info.id} at step {trajectory.parent_info.fork_step}\n"
-            )
-
-    def on_trajectory_task_set(self, trajectory: Trajectory, task: Task | None) -> None:  # type: ignore[override]
-        goal = task.goal if (task and hasattr(task, "goal")) else ""
-        self._write(f"### Goal: {goal}\n")
+        self._write(
+            {
+                "type": "trajectory_task_set",
+                "trajectory_id": trajectory.id,
+                "task": _to_jsonable(task),
+            }
+        )
 
     def on_trajectory_step_added(self, trajectory: Trajectory, step: Any) -> None:  # type: ignore[override]
         self._write(
-            f"## Step {len(trajectory.steps)} for trajectory {trajectory.id}:\n"
+            {
+                "type": "trajectory_step_added",
+                "trajectory_id": trajectory.id,
+                # zero-based index for steps in UI/consumers
+                "step_index": len(trajectory.steps) - 1,
+                "step": _to_jsonable(step),
+                "reward": trajectory.reward,
+                # propagate fields that may update when a step is added
+                "finish_message": trajectory.finish_message,
+                "error_message": trajectory.error_message,
+            }
         )
-        goal = trajectory.task.goal if (trajectory.task and hasattr(trajectory.task, "goal")) else ""
-        self._write(f"### Goal: {goal}\n")
-        self._write(str(step) + "\n")
-        self._write("--------------------------------\n")
 
     def on_trajectory_finished(self, trajectory: Trajectory) -> None:  # type: ignore[override]
         self._write(
-            f"## Finished trajectory {trajectory.id}: reward={trajectory.reward} \n"
+            {
+                "type": "trajectory_finished",
+                "trajectory_id": trajectory.id,
+                "reward": trajectory.reward,
+                "finish_message": trajectory.finish_message,
+                "error_message": trajectory.error_message,
+            }
         )
-        if trajectory.finish_message:
-            self._write(f"finish_message: {trajectory.finish_message}\n")
-        if trajectory.error_message:
-            self._write(f"error_message: {trajectory.error_message}\n")
 
 
 class QueueSink(TrajectoryEventHandler):
@@ -155,39 +126,47 @@ class QueueSink(TrajectoryEventHandler):
             pass
 
     def on_trajectory_created(self, trajectory: Trajectory) -> None:  # type: ignore[override]
-        self._put({
-            "type": "trajectory_created",
-            "trajectory": _to_jsonable(trajectory),
-        })
+        self._put(
+            {
+                "type": "trajectory_created",
+                "trajectory": _to_jsonable(trajectory),
+            }
+        )
 
     def on_trajectory_task_set(self, trajectory: Trajectory, task: Task | None) -> None:  # type: ignore[override]
-        self._put({
-            "type": "trajectory_task_set",
-            "trajectory_id": trajectory.id,
-            "task": _to_jsonable(task),
-        })
+        self._put(
+            {
+                "type": "trajectory_task_set",
+                "trajectory_id": trajectory.id,
+                "task": _to_jsonable(task),
+            }
+        )
 
     def on_trajectory_step_added(self, trajectory: Trajectory, step: Any) -> None:  # type: ignore[override]
-        self._put({
-            "type": "trajectory_step_added",
-            "trajectory_id": trajectory.id,
-            # zero-based index for steps in UI/consumers
-            "step_index": len(trajectory.steps) - 1,
-            "step": _to_jsonable(step),
-            "reward": trajectory.reward,
-            # propagate fields that may update when a step is added
-            "finish_message": trajectory.finish_message,
-            "error_message": trajectory.error_message,
-        })
+        self._put(
+            {
+                "type": "trajectory_step_added",
+                "trajectory_id": trajectory.id,
+                # zero-based index for steps in UI/consumers
+                "step_index": len(trajectory.steps) - 1,
+                "step": _to_jsonable(step),
+                "reward": trajectory.reward,
+                # propagate fields that may update when a step is added
+                "finish_message": trajectory.finish_message,
+                "error_message": trajectory.error_message,
+            }
+        )
 
     def on_trajectory_finished(self, trajectory: Trajectory) -> None:  # type: ignore[override]
-        self._put({
-            "type": "trajectory_finished",
-            "trajectory_id": trajectory.id,
-            "reward": trajectory.reward,
-            "finish_message": trajectory.finish_message,
-            "error_message": trajectory.error_message,
-        })
+        self._put(
+            {
+                "type": "trajectory_finished",
+                "trajectory_id": trajectory.id,
+                "reward": trajectory.reward,
+                "finish_message": trajectory.finish_message,
+                "error_message": trajectory.error_message,
+            }
+        )
 
 
 def trajectory_collection_dump_to_events(traj_collection_dump: Dict[str, Any]) -> list[dict[str, Any]]:
@@ -201,46 +180,54 @@ def trajectory_collection_dump_to_events(traj_collection_dump: Dict[str, Any]) -
     collection_id = traj_collection_dump.get("id")
     trajectories = traj_collection_dump.get("trajectories", {})
     for traj in trajectories.values():
-        events.append({
-            "type": "trajectory_created",
-            "trajectory": traj,
-            "collection_id": collection_id,
-            "ts": now + (seq * 1e-6),
-        })
+        events.append(
+            {
+                "type": "trajectory_created",
+                "trajectory": traj,
+                "collection_id": collection_id,
+                "ts": now + (seq * 1e-6),
+            }
+        )
         seq += 1
-        events.append({
-            "type": "trajectory_task_set",
-            "trajectory_id": traj.get("id"),
-            "task": traj.get("task"),
-            "collection_id": collection_id,
-            "ts": now + (seq * 1e-6),
-        })
+        events.append(
+            {
+                "type": "trajectory_task_set",
+                "trajectory_id": traj.get("id"),
+                "task": traj.get("task"),
+                "collection_id": collection_id,
+                "ts": now + (seq * 1e-6),
+            }
+        )
         seq += 1
         # Emit zero-based step indices for consistency with live UI
         for idx, step in enumerate(traj.get("steps", []), start=0):
-            events.append({
-                "type": "trajectory_step_added",
+            events.append(
+                {
+                    "type": "trajectory_step_added",
+                    "trajectory_id": traj.get("id"),
+                    "step_index": idx,
+                    "step": step,
+                    "reward": traj.get("reward", 0.0),
+                    # Include terminal/error messages if present in the dump
+                    "finish_message": traj.get("finish_message"),
+                    "error_message": traj.get("error_message"),
+                    "collection_id": collection_id,
+                    "ts": now + (seq * 1e-6),
+                }
+            )
+            seq += 1
+        # Emit a final finish event for each trajectory to capture terminal status
+        events.append(
+            {
+                "type": "trajectory_finished",
                 "trajectory_id": traj.get("id"),
-                "step_index": idx,
-                "step": step,
                 "reward": traj.get("reward", 0.0),
-                # Include terminal/error messages if present in the dump
                 "finish_message": traj.get("finish_message"),
                 "error_message": traj.get("error_message"),
                 "collection_id": collection_id,
                 "ts": now + (seq * 1e-6),
-            })
-            seq += 1
-        # Emit a final finish event for each trajectory to capture terminal status
-        events.append({
-            "type": "trajectory_finished",
-            "trajectory_id": traj.get("id"),
-            "reward": traj.get("reward", 0.0),
-            "finish_message": traj.get("finish_message"),
-            "error_message": traj.get("error_message"),
-            "collection_id": collection_id,
-            "ts": now + (seq * 1e-6),
-        })
+            }
+        )
         seq += 1
     return events
 
@@ -295,4 +282,3 @@ class MarkdownFileSink(TrajectoryEventHandler):
             f.write(f"### Goal: {goal}\n")
             f.write(str(step) + "\n")
             f.write("--------------------------------\n")
-

@@ -1,16 +1,14 @@
-    
-from typing import Sequence
-from openhands.sdk.event import ActionEvent, AgentErrorEvent, Event, EventID, MessageEvent
-from openhands.sdk.conversation.base import ConversationStateProtocol
 from openhands.sdk.conversation.state import ConversationExecutionStatus
+from openhands.sdk.event import ActionEvent, AgentErrorEvent, Event, EventID, MessageEvent
+
 from platoon.openhands.types import OpenHandsObservation
 
 
 def is_action(event: Event) -> bool:
-    return isinstance(event, ActionEvent) \
-        or (isinstance(event, MessageEvent) and event.source == "agent")
+    return isinstance(event, ActionEvent) or (isinstance(event, MessageEvent) and event.source == "agent")
 
-# TODO: Logic can probably be simplified now, by looking at changes in llm_response_id. Anytime llm_response_id changes, we can consider it as a new action.
+
+# TODO: Simplify by looking at changes in llm_response_id. When it changes, consider it a new action.
 def get_actions_for_last_obs(observation: OpenHandsObservation, require_same_llm_call_id: bool = False) -> list[Event]:
     """Collect Event(s) we consider as actions that immediately follow a past ObservationEvent and are
     fully observed by a subsequent ObservationBaseEvent referencing them.
@@ -49,8 +47,10 @@ def get_actions_for_last_obs(observation: OpenHandsObservation, require_same_llm
     if require_same_llm_call_id and new_actions:
         llm_call_id = new_actions[0].llm_response_id
         if any(action.llm_response_id != llm_call_id for action in new_actions):
-            raise ValueError("Detected at least two actions in a step with differing llm_response_id. "
-            "This is unexpected and can lead to undefined behavior.")
+            raise ValueError(
+                "Detected at least two actions in a step with differing llm_response_id. "
+                "This is unexpected and can lead to undefined behavior."
+            )
 
     return list(reversed(new_actions))
 
@@ -83,9 +83,15 @@ def get_obs_for_last_action(observation: OpenHandsObservation) -> list[Event]:
 
 def is_finished(observation: OpenHandsObservation, last_event_seen: EventID | None = None) -> bool:
     conversation_state = observation.conversation_state
-    oh_conversation_finished = conversation_state.agent_status == ConversationExecutionStatus.FINISHED \
-        or conversation_state.agent_status == ConversationExecutionStatus.STUCK \
+    oh_conversation_finished = (
+        conversation_state.agent_status == ConversationExecutionStatus.FINISHED
+        or conversation_state.agent_status == ConversationExecutionStatus.STUCK
         or conversation_state.agent_status == ConversationExecutionStatus.ERROR
+    )
     last_event_id = conversation_state.events[-1].id
-    platoon_episode_caught_up = last_event_id in (observation.last_step_action_id, observation.last_step_observation_id, last_event_seen)
+    platoon_episode_caught_up = last_event_id in (
+        observation.last_step_action_id,
+        observation.last_step_observation_id,
+        last_event_seen,
+    )
     return oh_conversation_finished and platoon_episode_caught_up

@@ -4,8 +4,9 @@ from typing import Any, Optional
 
 import pytest
 
+from platoon.agents.actions.subagent import launch_subagent
 from platoon.agents.base import ForkableAgent
-from platoon.envs.base import Observation, Task
+from platoon.envs.base import ForkableEnv, Observation, Task
 from platoon.episode.context import (
     budget_tracker,
     current_trajectory,
@@ -13,13 +14,11 @@ from platoon.episode.context import (
 )
 from platoon.episode.loop import run_episode
 from platoon.episode.trajectory import TrajectoryCollection
-from platoon.agents.actions.subagent import launch_subagent
-from platoon.envs.base import ForkableEnv
-
 
 # -----------------------------
 # Test doubles for Agent and Env
 # -----------------------------
+
 
 @dataclass
 class MockAgent(ForkableAgent):
@@ -81,16 +80,20 @@ class MockEnv(ForkableEnv):
                 traj_collection = current_trajectory_collection.get()
                 traj = current_trajectory.get()
                 rem_at_capture = int(budget_tracker.get().remaining_budget())
-                traj_collection.add_trajectory_step(traj.id, {"subagent_message": msg, "remaining_at_capture": rem_at_capture})
+                traj_collection.add_trajectory_step(
+                    traj.id, {"subagent_message": msg, "remaining_at_capture": rem_at_capture}
+                )
 
         # Prepare step payload, optionally embedding budget snapshots
         payload = {"action": action}
         if self.record_remaining:
-            payload.update({
-                "rem_nr": budget_tracker.get().remaining_budget(),
-                "rem_r": budget_tracker.get().remaining_budget(),
-                "label": self.record_label,
-            })
+            payload.update(
+                {
+                    "rem_nr": budget_tracker.get().remaining_budget(),
+                    "rem_r": budget_tracker.get().remaining_budget(),
+                    "label": self.record_label,
+                }
+            )
 
         # Record a step for the current (parent) trajectory
         traj_collection = current_trajectory_collection.get()
@@ -124,6 +127,7 @@ class MockEnv(ForkableEnv):
 # Helper utilities
 # -----------------------------
 
+
 def compute_recursive_used_steps(collection: TrajectoryCollection, root_traj_id: str) -> int:
     used = 0
     stack = [root_traj_id]
@@ -142,6 +146,7 @@ def compute_recursive_used_steps(collection: TrajectoryCollection, root_traj_id:
 # -----------------------------
 # Tests
 # -----------------------------
+
 
 @pytest.mark.asyncio
 async def test_budget_caps_episode_steps():
@@ -233,7 +238,9 @@ async def test_nested_subagents_budget_caps():
     assert len(child_ids) == 1
     # Child's own steps plus its descendants should equal child1_max
     child_traj = collection.trajectories[child_ids[0]]
-    grandchild_ids = [tid for tid, t in collection.trajectories.items() if t.parent_info and t.parent_info.id == child_ids[0]]
+    grandchild_ids = [
+        tid for tid, t in collection.trajectories.items() if t.parent_info and t.parent_info.id == child_ids[0]
+    ]
     assert len(grandchild_ids) == 1
     grandchild_traj = collection.trajectories[grandchild_ids[0]]
     assert len(child_traj.steps) + len(grandchild_traj.steps) == child1_max
@@ -292,7 +299,9 @@ async def test_subagent_budget_message_values_simple():
 
     env = MockEnv(_task=Task(goal="root", max_steps=parent_max))
     # Capture the subagent message in a step for assertion
-    agent = MockAgent(actions=[{"type": "SUBAGENT", "child_steps": child_max, "capture_message": True}] + [{"type": "NOP"}] * 10)
+    agent = MockAgent(
+        actions=[{"type": "SUBAGENT", "child_steps": child_max, "capture_message": True}] + [{"type": "NOP"}] * 10
+    )
 
     traj = await run_episode(agent, env)
 
@@ -300,7 +309,7 @@ async def test_subagent_budget_message_values_simple():
     msg_steps = [s for s in traj.steps if isinstance(s, dict) and "subagent_message" in s]
     assert len(msg_steps) == 1
     msg_step = msg_steps[0]
-    msg = msg_step["subagent_message"]
+    msg: str = msg_step["subagent_message"]
     # Ensure format and numbers are correct
     assert f"Budget used by subagent: {child_max}/{child_max} steps." in msg
     m = re.search(r"Total remaining budget for the current task is (\d+) steps", msg)
@@ -324,7 +333,7 @@ async def test_subagent_budget_message_values_nested():
     msg_steps = [s for s in traj.steps if isinstance(s, dict) and "subagent_message" in s]
     assert len(msg_steps) == 1
     msg_step = msg_steps[0]
-    msg = msg_step["subagent_message"]
+    msg: str = msg_step["subagent_message"]
 
     # Subagent recursively used child_max steps across child + grandchild
     assert f"Budget used by subagent: {child_max}/{child_max} steps." in msg
@@ -364,4 +373,3 @@ async def test_child_remaining_snapshots_non_negative():
         # Steps are dicts with rem_nr/rem_r from MockEnv when record_remaining=True
         assert step.get("rem_nr", 0) >= 0
         assert step.get("rem_r", 0) >= 0
- 

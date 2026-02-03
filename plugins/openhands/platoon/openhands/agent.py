@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+
 from platoon.envs.base import Task
-from platoon.openhands.types import OpenHandsObservation, OpenHandsAction
-from platoon.utils.openhands_utils import get_actions_for_last_obs
-from platoon.utils.openhands_utils import is_finished
+from platoon.openhands.types import OpenHandsAction, OpenHandsObservation
+from platoon.utils.openhands_utils import get_actions_for_last_obs, is_finished
 
 
 class OpenHandsAgent:
@@ -13,21 +13,15 @@ class OpenHandsAgent:
         pass
 
     async def act(self, obs: OpenHandsObservation) -> OpenHandsAction:
-        step_actions = get_actions_for_last_obs(
-            obs, 
-            require_same_llm_call_id=True
-        )
+        step_actions = get_actions_for_last_obs(obs, require_same_llm_call_id=True)
         while not step_actions and not is_finished(obs):
             await asyncio.sleep(0.2)
-            step_actions = get_actions_for_last_obs(
-                obs, 
-                require_same_llm_call_id=True
-            )
-        
+            step_actions = get_actions_for_last_obs(obs, require_same_llm_call_id=True)
+
         action = OpenHandsAction(action_events=step_actions)
 
         if step_actions:
-            action.misc['completion_id'] = step_actions[-1].llm_response_id
+            action.misc["completion_id"] = step_actions[-1].llm_response_id
 
         # TODO: Consider logging usage and model here to be consistent with CodeActAgent.
         # Although, this info is probably already logged by OpenHands in the events.
@@ -35,7 +29,7 @@ class OpenHandsAgent:
 
     async def reset(self) -> None:
         pass
-    
+
     async def close(self) -> None:
         pass
 

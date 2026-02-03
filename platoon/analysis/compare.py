@@ -1,22 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import sys
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
-import hashlib
-import time
-import sys
 
-from platoon.analysis.compute_metrics import is_success_for_collection
 from platoon.analysis.appworld_metrics import (
-    iter_dump_objects as iter_dump_objects_from_dumps,
     get_first_traj_and_task_id,
+)
+from platoon.analysis.appworld_metrics import (
     num_steps_for_collection as num_steps_for_collection_in_dump,
 )
-
+from platoon.analysis.compute_metrics import is_success_for_collection
 
 # ----------------------------
 # Models
@@ -52,6 +52,8 @@ class CompareSummary:
     b_better: List[CompareItem]
     ties: List[CompareItem]
     unmatched: List[CompareItem]
+
+
 # ----------------------------
 # Diagnostics flags
 # ----------------------------
@@ -111,7 +113,7 @@ def _parse_json_mapping(text: str) -> Optional[Dict[str, Any]]:
             if first != -1:
                 t = t[first + 1 :]
             if t.endswith("```"):
-                t = t[: -3]
+                t = t[:-3]
         except Exception:
             pass
         t = t.strip()
@@ -133,7 +135,6 @@ def _parse_json_mapping(text: str) -> Optional[Dict[str, Any]]:
     except Exception:
         pass
     return None
-
 
 
 # ----------------------------
@@ -406,7 +407,7 @@ def compare_methods(
                 best[it.task_id or ""] = it
             else:
                 # Prefer success over failure only
-                if (not cur.success and it.success):
+                if not cur.success and it.success:
                     best[it.task_id or ""] = it
         return {k: v for k, v in best.items() if k}
 
@@ -483,6 +484,7 @@ def llm_cluster_compare_items(items: List[CompareItem], model: Optional[str] = N
     client = None
     try:
         from platoon.utils.llm_client import create_llm_client
+
         try:
             client = create_llm_client(model=model) if model else create_llm_client()
         except Exception:
@@ -491,14 +493,20 @@ def llm_cluster_compare_items(items: List[CompareItem], model: Optional[str] = N
         client = None
 
     if client is None:
-        _log_once("llm.cluster.items.client_unavailable", "[analyze-compare] LLM unavailable for compare-item clustering; using heuristic clustering.")
+        _log_once(
+            "llm.cluster.items.client_unavailable",
+            "[analyze-compare] LLM unavailable for clustering; using heuristic.",
+        )
         # Fallback: group by existing cluster_key without using an LLM
         clusters: Dict[str, List[CompareItem]] = {}
         for it in items:
             clusters.setdefault(it.cluster_key, []).append(it)
         return clusters
     else:
-        _log_once("llm.cluster.items.client_available", "[analyze-compare] LLM client available for compare-item clustering.")
+        _log_once(
+            "llm.cluster.items.client_available",
+            "[analyze-compare] LLM client available for clustering.",
+        )
 
     # Build a compact prompt listing cases; if available, enrich using AppWorld prompt builders.
     def _compact_desc(it: CompareItem) -> str:
@@ -513,9 +521,7 @@ def llm_cluster_compare_items(items: List[CompareItem], model: Optional[str] = N
                     msg = str(fm)[:200]
             return f"success={mc.success}, steps={mc.steps_total}, note={msg}"
 
-        return (
-            f"task={it.task_id}, winner={it.winner}, hint={it.cluster_key}, A[{mini(it.a)}], B[{mini(it.b)}]"
-        )
+        return f"task={it.task_id}, winner={it.winner}, hint={it.cluster_key}, A[{mini(it.a)}], B[{mini(it.b)}]"
 
     def _builder_snippet(mc: Optional[MethodCollection]) -> str:
         if mc is None:
@@ -523,6 +529,7 @@ def llm_cluster_compare_items(items: List[CompareItem], model: Optional[str] = N
         # Attempt to use AppWorld prompt builders when available
         try:
             from platoon.agents.appworld.codeact import AppWorldCodeActPromptBuilder  # type: ignore
+
             builder = AppWorldCodeActPromptBuilder()
             messages = builder.build_messages_from_traj_dump(mc.collection_dump, reward_threshold=-1e9)
             # Take up to the first two conversations and extract a short user prompt excerpt
@@ -552,27 +559,35 @@ def llm_cluster_compare_items(items: List[CompareItem], model: Optional[str] = N
 
     user_prompt = (
         "You are clustering A/B method comparisons by failure/success patterns.\n"
-        "Given the following lines (one per task), propose 4-6 short cluster labels and assign each line to exactly one label.\n"
-        "Avoid trivial singletons; group similar items together. Place leftovers in 'misc'.\n"
-        "Respond as JSON object mapping label -> list of indices (0-based).\n\n"
-        + "\n".join(lines)
+        "Given the following lines (one per task), propose 4-6 short cluster labels "
+        "and assign each line to exactly one label.\n"
+        "Avoid trivial singletons; group similar items together. "
+        "Place leftovers in 'misc'.\n"
+        "Respond as JSON object mapping label -> list of indices (0-based).\n\n" + "\n".join(lines)
     )
 
     try:
-        _log_once("llm.cluster.items.invoke", f"[analyze-compare] Invoking LLM clustering for {len(items)} items.")
+        _log_once(
+            "llm.cluster.items.invoke",
+            f"[analyze-compare] Invoking LLM clustering for {len(items)} items.",
+        )
         resp = client.system_completion(
-            system_prompt=(
-                "You are a concise analyst. Output strict JSON only. Labels should be short."
-            ),
+            system_prompt=("You are a concise analyst. Output strict JSON only. Labels should be short."),
             user_prompt=user_prompt,
             temperature=0.2,
             max_tokens=800,
         )
         text = _response_to_text(resp)
-        _log_once("llm.cluster.items.response", f"[analyze-compare] Received LLM clustering response (chars={len(text)}).")
+        _log_once(
+            "llm.cluster.items.response",
+            f"[analyze-compare] Received LLM clustering response (chars={len(text)}).",
+        )
         parsed_map = _parse_json_mapping(text)
         if parsed_map is None:
-            _log_once("llm.cluster.items.parse_error", f"[analyze-compare] LLM clustering parse error; falling back. head='{text[:120]}'")
+            _log_once(
+                "llm.cluster.items.parse_error",
+                f"[analyze-compare] LLM clustering parse error; falling back. head='{text[:120]}'",
+            )
             by_key: Dict[str, List[CompareItem]] = {}
             for it in items:
                 by_key.setdefault(it.cluster_key, []).append(it)
@@ -590,8 +605,8 @@ def llm_cluster_compare_items(items: List[CompareItem], model: Optional[str] = N
                 total = len(items)
                 singleton_labels = [lbl for lbl, its in clusters.items() if len(its) == 1]
                 num_singletons = sum(len(clusters[lbl]) for lbl in singleton_labels)
-                is_trivial_identity = (
-                    len(clusters) == total and all(lbl and len(its) == 1 for lbl, its in clusters.items())
+                is_trivial_identity = len(clusters) == total and all(
+                    lbl and len(its) == 1 for lbl, its in clusters.items()
                 )
                 if is_trivial_identity:
                     # Fallback to grouping by precomputed cluster_key
@@ -618,7 +633,10 @@ def llm_cluster_compare_items(items: List[CompareItem], model: Optional[str] = N
                 pass
             return clusters
     except Exception as e:
-        _log_once("llm.cluster.items.error", f"[analyze-compare] LLM compare-item clustering error; using heuristic grouping. {e}")
+        _log_once(
+            "llm.cluster.items.error",
+            f"[analyze-compare] LLM clustering error; using heuristic grouping. {e}",
+        )
         pass
 
     # Fallback: group by heuristic cluster_key
@@ -664,6 +682,7 @@ __all__ = [
 # LLM-based explanation for a single comparison with caching
 # ----------------------------
 
+
 def _cache_dir(default_subdir: str = "analyze_compare", override: Optional[str] = None) -> Path:
     if override is not None:
         p = Path(override)
@@ -680,6 +699,7 @@ def _item_key(item: CompareItem) -> str:
             return str(v)
         except Exception:
             return "?"
+
     a = item.a
     b = item.b
     parts = [
@@ -722,12 +742,17 @@ def explain_compare_item(
     client = None
     try:
         from platoon.utils.llm_client import create_llm_client
+
         client = create_llm_client(model=model) if model else create_llm_client()
     except Exception:
         client = None
 
     if client is not None:
-        _log_once("llm.explain.client_available", "[analyze-compare] LLM client available for explanation.")
+        _log_once(
+            "llm.explain.client_available",
+            "[analyze-compare] LLM client available for explanation.",
+        )
+
         # Use raw serialized trajectory collection dumps for both methods
         def dump_or_missing(mc: Optional[MethodCollection]) -> str:
             if mc is None:
@@ -738,12 +763,17 @@ def explain_compare_item(
                 return str(mc.collection_dump)
 
         user_prompt = (
-            "You are analyzing two trajectory collection dumps (A and B) for the SAME task.\n"
-            "Each dump is a JSON serialization of a TrajectoryCollection with one or more trajectories and steps.\n"
-            "Explain succinctly WHY the winner outperformed the other, or WHY both failed.\n"
-            "Cite concrete evidence from errors/finish messages or step contents when possible.\n"
-            "Please also reference the steps and trajectory ids (from root and subagent trajectories) with concrete examples when possible, "
-            "to contextualize the analysis.\n"
+            "You are analyzing two trajectory collection dumps (A and B) for the SAME "
+            "task.\n"
+            "Each dump is a JSON serialization of a TrajectoryCollection with one or "
+            "more trajectories and steps.\n"
+            "Explain succinctly WHY the winner outperformed the other, or WHY both "
+            "failed.\n"
+            "Cite concrete evidence from errors/finish messages or step contents when "
+            "possible.\n"
+            "Please also reference the steps and trajectory ids (from root and subagent "
+            "trajectories) with concrete examples when possible, to contextualize the "
+            "analysis.\n"
             "Text can be markdown.\n\n"
             f"Task: {item.task_id}\n"
             f"Outcome: {item.winner} ({item.rationale})\n"
@@ -759,7 +789,10 @@ def explain_compare_item(
                 max_tokens=1000,
             )
             text = _response_to_text(resp)
-            _log_once("llm.explain.response", f"[analyze-compare] Received LLM explanation response (chars={len(text)}).")
+            _log_once(
+                "llm.explain.response",
+                f"[analyze-compare] Received LLM explanation (chars={len(text)}).",
+            )
             analysis_text = text
             if analysis_text:
                 try:
@@ -769,14 +802,20 @@ def explain_compare_item(
                     pass
                 return analysis_text
         except Exception:
-            _log_once("llm.explain.error", "[analyze-compare] LLM explanation error; using heuristic fallback.")
+            _log_once(
+                "llm.explain.error",
+                "[analyze-compare] LLM explanation error; using heuristic fallback.",
+            )
             pass
 
     # Fallback heuristic
     global _LLM_WARNED_ANALYSIS
     if not _LLM_WARNED_ANALYSIS:
         try:
-            sys.stderr.write("[analyze-compare] LLM unavailable for analysis; using heuristic fallback. Set OPENAI_API_KEY and OPENAI_BASE_URL to enable.\n")
+            sys.stderr.write(
+                "[analyze-compare] LLM unavailable for analysis; using heuristic "
+                "fallback. Set OPENAI_API_KEY and OPENAI_BASE_URL to enable.\n"
+            )
             sys.stderr.flush()
         except Exception:
             pass
@@ -784,7 +823,8 @@ def explain_compare_item(
     if item.winner in ("A", "B"):
         loser = "B" if item.winner == "A" else "A"
         text = (
-            f"{item.winner} likely outperformed {loser}. Review finish/error messages and recent steps in the raw dumps."
+            f"{item.winner} likely outperformed {loser}. "
+            "Review finish/error messages and recent steps in the raw dumps."
         )
         try:
             with cache_path.open("w", encoding="utf-8") as f:
@@ -832,7 +872,7 @@ def batch_explain_compare(
 
     if show_progress and total > 0:
         try:
-            from rich.progress import Progress, BarColumn, TimeRemainingColumn, TextColumn
+            from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
 
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -872,6 +912,7 @@ def batch_explain_compare(
 # LLM hierarchical clustering of analyses
 # ----------------------------
 
+
 def llm_cluster_analyses(
     items: List[CompareItem],
     analyses: Dict[str, str],
@@ -898,13 +939,17 @@ def llm_cluster_analyses(
         ordered.append((it, clean))
 
     if not ordered:
-        _log_once("llm.cluster.analyses.empty_items", "[analyze-compare] No items with LLM analyses available to cluster; skipping.")
+        _log_once(
+            "llm.cluster.analyses.empty_items",
+            "[analyze-compare] No items with LLM analyses to cluster; skipping.",
+        )
         return {}
 
     # LLM client
     client = None
     try:
         from platoon.utils.llm_client import create_llm_client
+
         client = create_llm_client(model=model) if model else create_llm_client()
     except Exception:
         client = None
@@ -919,7 +964,9 @@ def llm_cluster_analyses(
             _LLM_WARNED_CLUSTER = True
         return _heuristic_cluster_from_analyses(ordered)
     else:
-        _log_once("llm.cluster.analyses.client_available", "[analyze-compare] LLM client available for analyses clustering.")
+        _log_once(
+            "llm.cluster.analyses.client_available", "[analyze-compare] LLM client available for analyses clustering."
+        )
 
     # Initial grouping: each item is its own group with a short title
     groups: Dict[str, List[int]] = {f"i{i}": [i] for i in range(len(ordered))}
@@ -938,11 +985,13 @@ def llm_cluster_analyses(
             "Input is lines with a key and a short summary.\n"
             "Group semantically similar items together; do not output one label per key.\n"
             "Return JSON mapping cluster_label -> list of keys to merge. Use 4-8 concise labels.\n"
-            "Avoid singletons except for truly unique cases; put leftovers into a 'misc' group.\n\n"
-            + "\n".join(lines)
+            "Avoid singletons except for truly unique cases; put leftovers into a 'misc' group.\n\n" + "\n".join(lines)
         )
         try:
-            _log_once("llm.cluster.analyses.invoke", f"[analyze-compare] Invoking LLM analyses clustering for {len(lines)} representatives.")
+            _log_once(
+                "llm.cluster.analyses.invoke",
+                f"[analyze-compare] Invoking LLM analyses clustering for {len(lines)} representatives.",
+            )
             resp = client.system_completion(
                 system_prompt="Output STRICT JSON only.",
                 user_prompt=prompt,
@@ -950,10 +999,16 @@ def llm_cluster_analyses(
                 max_tokens=800,
             )
             text = _response_to_text(resp)
-            _log_once("llm.cluster.analyses.response", f"[analyze-compare] Received LLM analyses clustering response (chars={len(text)}).")
+            _log_once(
+                "llm.cluster.analyses.response",
+                f"[analyze-compare] Received LLM analyses clustering response (chars={len(text)}).",
+            )
             mapping = _parse_json_mapping(text)
             if mapping is None:
-                _log_once("llm.cluster.analyses.parse_error", f"[analyze-compare] LLM analyses clustering parse error; keeping current groups. head='{text[:120]}'")
+                _log_once(
+                    "llm.cluster.analyses.parse_error",
+                    f"[analyze-compare] LLM analyses clustering parse error; keeping current groups. head='{text[:120]}'",  # noqa: E501
+                )
                 break
             if isinstance(mapping, dict) and mapping:
                 merged: Dict[str, List[int]] = {}
@@ -970,7 +1025,10 @@ def llm_cluster_analyses(
                     groups = merged
                     continue
         except Exception as e:
-            _log_once(f"llm.cluster.analyses.error", f"[analyze-compare] LLM analyses clustering error; keeping current groups. {e}")
+            _log_once(
+                "llm.cluster.analyses.error",
+                f"[analyze-compare] LLM analyses clustering error; keeping current groups. {e}",
+            )
             break
         break
 
@@ -984,16 +1042,17 @@ def llm_cluster_analyses(
         total_items = len(ordered)
         singleton_labels = [label for label, items in out.items() if len(items) == 1]
         num_singletons = sum(len(out[label]) for label in singleton_labels)
-        is_trivial_identity = (
-            len(out) == total_items
-            and all(label.startswith('i') and len(items) == 1 for label, items in out.items())
+        is_trivial_identity = len(out) == total_items and all(
+            label.startswith("i") and len(items) == 1 for label, items in out.items()
         )
 
         # If everything is a singleton (identity mapping), fallback entirely to heuristic clustering
         if is_trivial_identity:
             if not _LLM_WARNED_CLUSTER:
                 try:
-                    sys.stderr.write("[analyze-compare] LLM clustering produced trivial singletons; using heuristic clustering.\n")
+                    sys.stderr.write(
+                        "[analyze-compare] LLM clustering produced trivial singletons; using heuristic clustering.\n"
+                    )
                     sys.stderr.flush()
                 except Exception:
                     pass
@@ -1024,9 +1083,7 @@ def llm_cluster_analyses(
     return out
 
 
-def _heuristic_cluster_from_analyses(
-    ordered: List[tuple[CompareItem, str]]
-) -> Dict[str, List[CompareItem]]:
+def _heuristic_cluster_from_analyses(ordered: List[tuple[CompareItem, str]]) -> Dict[str, List[CompareItem]]:
     """Group items by simple keyword buckets derived from their analysis text."""
     keywords = {
         "timeout": ["timeout", "time out", "timed out"],
@@ -1066,6 +1123,7 @@ def _heuristic_cluster_from_analyses(
 # Cluster caching helpers
 # ----------------------------
 
+
 def _clusters_cache_path(cache_dir: Optional[str]) -> Path:
     base = _cache_dir(override=cache_dir)
     return base / "clusters.json"
@@ -1092,9 +1150,7 @@ def write_clusters_cache(
         pass
 
 
-def read_clusters_cache(
-    *, cache_dir: Optional[str] = None
-) -> Optional[Dict[str, List[str]]]:
+def read_clusters_cache(*, cache_dir: Optional[str] = None) -> Optional[Dict[str, List[str]]]:
     """Load cached cluster mapping label -> list of task_ids, if present."""
     try:
         path = _clusters_cache_path(cache_dir)
@@ -1112,4 +1168,3 @@ def read_clusters_cache(
     except Exception:
         return None
     return None
-

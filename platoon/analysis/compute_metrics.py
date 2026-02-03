@@ -114,7 +114,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Compute successes and accuracy from trajectory collection dumps")
     parser.add_argument("paths", nargs="*", help="JSON/JSONL dump files (JSONL: each line is a dump)")
     parser.add_argument("--dir", dest="dir", default=None, help="Directory containing JSON/JSONL dumps")
-    parser.add_argument("--denom", dest="denom", type=int, default=None, help="Optional denominator to use for accuracy (overrides number of parsed dumps)")
+    parser.add_argument(
+        "--denom",
+        dest="denom",
+        type=int,
+        default=None,
+        help="Optional denominator to use for accuracy (overrides number of parsed dumps)",
+    )
     args = parser.parse_args()
 
     input_paths = discover_input_paths(args.dir, args.paths)
@@ -135,17 +141,20 @@ def main() -> None:
     denom = args.denom if (args.denom is not None and args.denom > 0) else total
     accuracy = (successes / denom) if denom > 0 else 0.0
     avg_steps_per_collection = (sum_steps_across_collections / total) if total > 0 else 0.0
-    print(json.dumps({
-        "total_collections": total,
-        "successes": successes,
-        "denominator_used": denom,
-        "accuracy": accuracy,
-        "total_steps": sum_steps_across_collections,
-        "avg_steps_per_collection": avg_steps_per_collection,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "total_collections": total,
+                "successes": successes,
+                "denominator_used": denom,
+                "accuracy": accuracy,
+                "total_steps": sum_steps_across_collections,
+                "avg_steps_per_collection": avg_steps_per_collection,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
     main()
-
-

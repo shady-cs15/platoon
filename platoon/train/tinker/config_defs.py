@@ -20,6 +20,7 @@ class AdamParams:
 @dataclass
 class WorkflowConfig:
     """Configuration for the rollout workflow."""
+
     group_size: int = 8
     rollout_config: RolloutConfig = field(default_factory=RolloutConfig)
 
@@ -30,6 +31,7 @@ class WorkflowConfig:
 class TrainConfig:
     model_name: str  # HuggingFace model identifier
     renderer_name: str  # Renderer type for prompt formatting
+    context_window_length: int | None = None
     batch_size: int = 32
     # Training duration: specify num_epochs, max_training_steps, or both (takes max)
     num_epochs: int | None = None
@@ -44,8 +46,8 @@ class TrainConfig:
     num_microbatches: int = 1
     max_staleness: int | None = None  # Max staleness for off-policy rollouts
     optimizer: AdamParams = field(default_factory=AdamParams)
-    loss_fn: str = 'cispo'
-    loss_fn_config: dict = field(default_factory=lambda: {'clip_low_threshold': 0., 'clip_high_threshold': 5.})
+    loss_fn: str = "cispo"
+    loss_fn_config: dict = field(default_factory=lambda: {"clip_low_threshold": 0.0, "clip_high_threshold": 5.0})
     lora_rank: int = 32
     workflow_config: WorkflowConfig = field(default_factory=WorkflowConfig)
     num_concurrent_rollout_workflow_workers: int | None = None
@@ -54,14 +56,17 @@ class TrainConfig:
         if self.num_concurrent_rollout_workflow_workers is None:
             self.num_concurrent_rollout_workflow_workers = self.batch_size
 
+
 @dataclass
 class TrainEventTriggerConfig:
-    strategy: Literal['epoch', 'step', 'none'] = "epoch"
+    strategy: Literal["epoch", "step", "none"] = "epoch"
     every: int = 1
+
 
 @dataclass
 class CheckpointConfig(TrainEventTriggerConfig):
     load_checkpoint_path: str | None = None
+
 
 @dataclass
 class EvalConfig(TrainEventTriggerConfig):
@@ -72,10 +77,11 @@ class EvalConfig(TrainEventTriggerConfig):
 @dataclass
 class StatsConfig:
     """Configuration for stats tracking and logging."""
+
     experiment_name: str = "platoon_tinker"
     trial_name: str = "run"
     wandb: WandBConfig = field(default_factory=WandBConfig)
-    
+
     def to_stats_logger_config(self, log_dir: str) -> StatsLoggerConfig:
         """Create a StatsLoggerConfig from this stats config."""
         return StatsLoggerConfig(
@@ -89,8 +95,9 @@ class StatsConfig:
 @dataclass
 class WatchdogConfig:
     """Configuration for the watchdog that monitors for hangs."""
+
     enabled: bool = True
-    timeout_seconds: float = 600 # 10 minutes default
+    timeout_seconds: float = 600  # 10 minutes default
     exit_code: int = 2  # Exit code when watchdog kills process
 
 

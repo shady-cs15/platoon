@@ -2,22 +2,23 @@ from __future__ import annotations
 
 import os
 import subprocess
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
+
 try:
     from textual.containers import HorizontalScroll  # type: ignore
 except Exception:
     HorizontalScroll = VerticalScroll  # type: ignore
-from textual.widgets import DataTable, Footer, Header, Static
-from textual.timer import Timer
 from rich.markdown import Markdown
-from textual.events import MouseDown, MouseMove, MouseUp
 from rich.text import Text
+from textual.events import MouseDown, MouseMove, MouseUp
+from textual.timer import Timer
+from textual.widgets import DataTable, Footer, Header, Static
 
 from platoon.analysis.compare import (
     CompareItem,
@@ -66,6 +67,7 @@ class CompareDetails(Static):
 
         def _source(mc):
             return f"`{mc.source_path}`" if mc else "-"
+
         def _summary_lines(name: str, mc):
             if mc is None:
                 return [f"### {name}", "- (missing)"]
@@ -81,7 +83,7 @@ class CompareDetails(Static):
 
         lines: list[str] = [
             f"## Task `{item.task_id}`",
-            f"- Goal: { _task_text(item) }",
+            f"- Goal: {_task_text(item)}",
             f"- Winner: **{item.winner}** ({item.rationale})",
             f"- Cluster: `{item.cluster_key}`",
             "",
@@ -115,7 +117,9 @@ class CompareApp(App):
         Binding("L", "cluster_analyses", "Cluster Analyses"),
     ]
 
-    def __init__(self, summary: CompareSummary, a_label: str, b_label: str, *, analysis_cache_dir: Optional[str] = None) -> None:
+    def __init__(
+        self, summary: CompareSummary, a_label: str, b_label: str, *, analysis_cache_dir: Optional[str] = None
+    ) -> None:
         super().__init__()
         self.summary = summary
         self.a_label = a_label
@@ -201,7 +205,12 @@ class CompareApp(App):
             cached = read_clusters_cache(cache_dir=self.analysis_cache_dir)
             if cached:
                 # Map task_id back to items
-                id_to_item: Dict[str, CompareItem] = {it.task_id: it for it in (self.summary.a_better + self.summary.b_better + self.summary.ties + self.summary.unmatched)}
+                id_to_item: Dict[str, CompareItem] = {
+                    it.task_id: it
+                    for it in (
+                        self.summary.a_better + self.summary.b_better + self.summary.ties + self.summary.unmatched
+                    )
+                }
                 clusters_items: Dict[str, List[CompareItem]] = {}
                 for label, ids in cached.items():
                     clusters_items[label] = [id_to_item[i] for i in ids if i in id_to_item]
@@ -315,8 +324,9 @@ class CompareApp(App):
                 clusters = self.analysis_clusters
             else:
                 from collections import defaultdict
+
                 clusters = defaultdict(list)
-                for it in (self.summary.a_better + self.summary.b_better + self.summary.ties + self.summary.unmatched):
+                for it in self.summary.a_better + self.summary.b_better + self.summary.ties + self.summary.unmatched:
                     clusters[it.cluster_key].append(it)
             for label in sorted(clusters.keys()):
                 _header(label)
@@ -463,6 +473,7 @@ class CompareApp(App):
         copied = False
         try:
             import pyperclip  # type: ignore
+
             pyperclip.copy(text)
             copied = True
         except Exception:
@@ -484,7 +495,9 @@ class CompareApp(App):
 __all__ = ["run_compare_ui"]
 
 
-def run_compare_ui(summary: CompareSummary, a_label: str = "A", b_label: str = "B", *, analysis_cache_dir: Optional[str] = None) -> None:
+def run_compare_ui(
+    summary: CompareSummary, a_label: str = "A", b_label: str = "B", *, analysis_cache_dir: Optional[str] = None
+) -> None:
     app = CompareApp(summary=summary, a_label=a_label, b_label=b_label, analysis_cache_dir=analysis_cache_dir)
     app.run()
 
@@ -545,4 +558,3 @@ class SplitDivider(Static):
             event.stop()
         except Exception:
             pass
-

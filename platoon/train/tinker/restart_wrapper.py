@@ -21,7 +21,6 @@ Or as a Python API:
 
 import argparse
 import logging
-import os
 import signal
 import subprocess
 import sys
@@ -36,10 +35,12 @@ logger = logging.getLogger("platoon.restart_wrapper")
 def _configure_restart_wrapper_logging():
     """Configure logging for restart wrapper. Only call when running as main script."""
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s [RESTART-WRAPPER] %(levelname)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [RESTART-WRAPPER] %(levelname)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
@@ -51,25 +52,25 @@ def run_with_restart(
     restart_delay_seconds: float = 10.0,
 ) -> int:
     """Run a command and restart it on watchdog timeout.
-    
+
     Args:
         command: The command to run (list of strings)
         max_restarts: Maximum number of restarts before giving up
         watchdog_exit_code: The exit code that triggers a restart
         restart_delay_seconds: Delay before restarting
-        
+
     Returns:
         The final exit code of the process
     """
     restart_count = 0
-    
+
     while True:
         logger.info(f"Starting training (attempt {restart_count + 1})")
         logger.info(f"Command: {' '.join(command)}")
-        
+
         start_time = time.time()
         process = None
-        
+
         try:
             # Use Popen so we can forward signals to the child
             process = subprocess.Popen(command)
@@ -92,23 +93,22 @@ def run_with_restart(
                         process.kill()
                         exit_code = process.wait()
             return 130  # Standard exit code for SIGINT
-        
+
         elapsed = time.time() - start_time
-        
+
         if exit_code == 0:
             logger.info(f"Training completed successfully (elapsed: {elapsed:.0f}s)")
             return 0
-        
+
         if exit_code == watchdog_exit_code:
             restart_count += 1
-            
+
             if restart_count > max_restarts:
                 logger.error(
-                    f"Training hung and was killed by watchdog. "
-                    f"Max restarts ({max_restarts}) exceeded. Giving up."
+                    f"Training hung and was killed by watchdog. Max restarts ({max_restarts}) exceeded. Giving up."
                 )
                 return exit_code
-            
+
             logger.warning(
                 f"Training hung and was killed by watchdog (exit code {exit_code}). "
                 f"Restarting in {restart_delay_seconds}s... "
@@ -116,7 +116,7 @@ def run_with_restart(
             )
             time.sleep(restart_delay_seconds)
             continue
-        
+
         # Non-zero, non-watchdog exit code - don't restart
         logger.error(
             f"Training exited with code {exit_code} (elapsed: {elapsed:.0f}s). "
@@ -127,7 +127,7 @@ def run_with_restart(
 
 def main():
     _configure_restart_wrapper_logging()
-    
+
     parser = argparse.ArgumentParser(
         description="Restart training on watchdog timeout",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -156,17 +156,17 @@ def main():
         nargs=argparse.REMAINDER,
         help="Command to run (after --)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Handle the case where command starts with '--'
     command = args.command
     if command and command[0] == "--":
         command = command[1:]
-    
+
     if not command:
         parser.error("No command specified. Use -- before the command.")
-    
+
     exit_code = run_with_restart(
         command=command,
         max_restarts=args.max_restarts,
@@ -178,4 +178,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

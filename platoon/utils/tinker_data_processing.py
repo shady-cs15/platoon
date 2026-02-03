@@ -13,7 +13,6 @@ from typing import Callable
 
 import tinker
 import torch
-
 from tinker import TensorData
 
 from platoon.train.tinker.proxy import TinkerLLMInteraction
@@ -35,9 +34,7 @@ def create_rightshifted_model_input_and_leftshifted_targets(
 
     last_chunk = chunks[-1]
     if not isinstance(last_chunk, tinker.types.EncodedTextChunk):
-        raise ValueError(
-            "The last chunk must be a text chunk. This is because images are 0-loss anyways, so we should remove them beforehand."
-        )
+        raise ValueError("The last chunk must be a text chunk. Images are 0-loss anyways, so remove them beforehand.")
 
     total_length = sum(c.length for c in chunks)
     if total_length < 2:
@@ -63,6 +60,7 @@ def create_rightshifted_model_input_and_leftshifted_targets(
 @dataclass
 class TrajectoryStats:
     """Statistics for a single trajectory."""
+
     trajectory_id: str
     reward: float
     num_steps: int
@@ -76,6 +74,7 @@ class TrajectoryStats:
 @dataclass
 class TrajectoryCollectionResult:
     """Result from processing a trajectory collection."""
+
     datums: list[tinker.Datum]
     task_reward: float  # Reward of the root trajectory
     trajectory_stats: list[TrajectoryStats]
@@ -136,6 +135,7 @@ def _flat_ob_to_model_input(flat_ob: FlatOb) -> tinker.ModelInput:
 @dataclass
 class SequenceAccumulator:
     """Accumulates tokens across steps to enable sequence merging."""
+
     full_sequence: FlatOb = field(default_factory=list)
     sampled_logprobs: list[float] = field(default_factory=list)
     advantages: list[float] = field(default_factory=list)
@@ -153,25 +153,21 @@ def make_datum_from_accumulator(
     checkpoint_version: int,
 ) -> tinker.Datum:
     """Create a tinker.Datum from the accumulated sequence data.
-    
+
     Following the format from tinker_cookbook.rl.data_processing.trajectory_to_data.
     """
     all_tokens_T = _flat_ob_to_model_input(accumulator.full_sequence)
-    input_tokens_T, target_tokens_T = create_rightshifted_model_input_and_leftshifted_targets(
-        list(all_tokens_T.chunks)
-    )
+    input_tokens_T, target_tokens_T = create_rightshifted_model_input_and_leftshifted_targets(list(all_tokens_T.chunks))
     sampled_logprobs_T = accumulator.sampled_logprobs[1:]
     advantages_T = accumulator.advantages[1:]
     mask_T = accumulator.mask[1:]
-    
+
     assert (
-        input_tokens_T.length
-        == len(target_tokens_T)
-        == len(sampled_logprobs_T)
-        == len(advantages_T)
-        == len(mask_T)
-    ), f"Length mismatch: {input_tokens_T.length} vs {len(target_tokens_T)} vs {len(sampled_logprobs_T)} vs {len(advantages_T)} vs {len(mask_T)}"
-    
+        input_tokens_T.length == len(target_tokens_T) == len(sampled_logprobs_T) == len(advantages_T) == len(mask_T)
+    ), (
+        f"Length mismatch: input={input_tokens_T.length} target={len(target_tokens_T)} logprobs={len(sampled_logprobs_T)}"  # noqa: E501
+    )
+
     return tinker.Datum(
         model_input=input_tokens_T,
         loss_fn_inputs={
@@ -188,6 +184,7 @@ def make_datum_from_accumulator(
 @dataclass
 class TrajectoryDataResult:
     """Result from processing a single trajectory."""
+
     datums: list[tinker.Datum]
     num_steps: int  # Number of valid steps found
     num_input_tokens: int
@@ -205,10 +202,10 @@ def trajectory_to_data(
     trajectory_reward: float = 0.0,
 ) -> TrajectoryDataResult:
     """Convert a trajectory to training data, merging sequences when possible.
-    
-    If observations are prefixes of subsequent observations (i.e., the sequence 
+
+    If observations are prefixes of subsequent observations (i.e., the sequence
     grows by appending), we can merge them into a single Datum for efficiency.
-    
+
     Args:
         trajectory: Trajectory dictionary containing steps.
         interactions: Dict mapping completion_id to TinkerLLMInteraction.
@@ -218,7 +215,7 @@ def trajectory_to_data(
         checkpoint_version: The checkpoint version for staleness checking.
         filter_errors: Whether to filter out error steps.
         trajectory_reward: The reward for the trajectory (used for error filtering).
-        
+
     Returns:
         TrajectoryDataResult with datums and statistics.
     """
@@ -227,70 +224,73 @@ def trajectory_to_data(
     count_found = 0
     total_input_tokens = 0
     total_output_tokens = 0
-    
-    for i, step in enumerate(trajectory['steps']):
+
+    for i, step in enumerate(trajectory["steps"]):
         # Check if we should skip this step
-        if 'action_misc' not in step.get('misc', {}) or 'completion_id' not in step['misc']['action_misc']:
+        if "action_misc" not in step.get("misc", {}) or "completion_id" not in step["misc"]["action_misc"]:
             continue
-        
+
         # Filter error steps from successful trajectories
         if filter_errors and trajectory_reward >= 1:
-            has_error = ('error' in step and step['error']) or \
-                        ('output' in step and step['output'] and 'traceback' in step['output'].lower())
+            has_error = ("error" in step and step["error"]) or (
+                "output" in step and step["output"] and "traceback" in step["output"].lower()
+            )
             if has_error:
                 continue
-        
-        completion_id = step['misc']['action_misc']['completion_id']
+
+        completion_id = step["misc"]["action_misc"]["completion_id"]
         if completion_id not in interactions:
             logger.warning(f"Completion ID {completion_id} not found in interactions for task {task_id}")
             continue
-        
+
         interaction = interactions[completion_id]
         count_found += 1
-        
+
         # Get observation and action
         ob = interaction.obs
         ob_flat = _flatten_chunks(list(ob.chunks))
         ac_tokens = list(interaction.action.tokens)
         ac_logprobs = list(interaction.action.logprobs)
-        
+
         # Track token counts per step (before merging)
         step_input_tokens = _flat_ob_token_len(ob_flat)
         step_output_tokens = len(ac_tokens)
         total_input_tokens += step_input_tokens
         total_output_tokens += step_output_tokens
-        
+
         # Determine if we can extend the current sequence or need to start fresh
         if len(accumulator.full_sequence) == 0:
             delta_ob_flat = ob_flat
         elif _is_prefix(accumulator.full_sequence, ob_flat):
             # Observation extends the current sequence - we can merge
-            delta_ob_flat = ob_flat[len(accumulator.full_sequence):]
+            delta_ob_flat = ob_flat[len(accumulator.full_sequence) :]
         else:
             # New sequence doesn't extend current - flush and start new
             data.append(make_datum_from_accumulator(accumulator, checkpoint_version))
             accumulator.clear()
             delta_ob_flat = ob_flat
-        
+
         # Add observation tokens (with 0.0 logprobs and 0.0 mask - don't train on prompts)
         delta_ob_len = _flat_ob_token_len(delta_ob_flat)
         accumulator.full_sequence.extend(delta_ob_flat)
         accumulator.sampled_logprobs.extend([0.0] * delta_ob_len)
         accumulator.advantages.extend([0.0] * delta_ob_len)
         accumulator.mask.extend([0.0] * delta_ob_len)
-        
+
         # Add action tokens (with actual logprobs and advantages)
         accumulator.full_sequence.extend(ac_tokens)
         accumulator.sampled_logprobs.extend(ac_logprobs)
         accumulator.advantages.extend([trajectory_advantage] * len(ac_tokens))
         accumulator.mask.extend([1.0] * len(ac_tokens))
-    
+
     # Flush remaining accumulated data
     if accumulator.full_sequence:
         data.append(make_datum_from_accumulator(accumulator, checkpoint_version))
-    
-    logger.debug(f"Found {count_found} steps, produced {len(data)} datums for task {task_id} trajectory {trajectory_id}")
-    
+
+    logger.debug(
+        f"Found {count_found} steps, produced {len(data)} datums for task {task_id} trajectory {trajectory_id}"
+    )
+
     return TrajectoryDataResult(
         datums=data,
         num_steps=count_found,
@@ -305,14 +305,14 @@ def get_train_data_for_trajectory_collection(
     task_id: str,
     checkpoint_version: int,
     filter_errors: bool = False,
-    reward_processor: Callable[[dict], tuple[float, dict]] = lambda traj: (traj['reward'], {})
+    reward_processor: Callable[[dict], tuple[float, dict]] = lambda traj: (traj["reward"], {}),
 ) -> TrajectoryCollectionResult:
     """Extract training data from all trajectories in a collection.
-    
+
     A trajectory collection may contain multiple trajectories when using multi-agent
     rollouts. The first trajectory is the "root" trajectory, and others are subagent
     trajectories.
-    
+
     Args:
         trajectory_collection: Dictionary with 'trajectories' key mapping to trajectory dicts.
         interactions: Dict mapping completion_id to TinkerLLMInteraction.
@@ -320,7 +320,7 @@ def get_train_data_for_trajectory_collection(
         checkpoint_version: The checkpoint version for staleness checking.
         filter_errors: Whether to filter out error steps.
         reward_processor: Function to process trajectory rewards.
-        
+
     Returns:
         TrajectoryCollectionResult with datums and per-trajectory statistics.
     """
@@ -329,15 +329,15 @@ def get_train_data_for_trajectory_collection(
     task_reward = 0.0
     root_rewards_dict: dict[str, float] = {}
     is_first = True
-    
-    for trajectory_id, trajectory in trajectory_collection['trajectories'].items():
+
+    for trajectory_id, trajectory in trajectory_collection["trajectories"].items():
         trajectory_reward, rewards_dict = reward_processor(trajectory)
-        
+
         # Store the root (first) trajectory's reward as the task reward
         if is_first:
             task_reward = trajectory_reward
             root_rewards_dict = rewards_dict
-        
+
         # Advantage will be set later after all rollouts complete
         result = trajectory_to_data(
             trajectory=trajectory,
@@ -349,30 +349,31 @@ def get_train_data_for_trajectory_collection(
             filter_errors=filter_errors,
             trajectory_reward=trajectory_reward,
         )
-        
+
         train_data.extend(result.datums)
-        
+
         # Record per-trajectory stats
-        trajectory_stats.append(TrajectoryStats(
-            trajectory_id=trajectory_id,
-            reward=trajectory_reward,
-            num_steps=result.num_steps,
-            num_input_tokens=result.num_input_tokens,
-            num_output_tokens=result.num_output_tokens,
-            num_datums=len(result.datums),
-            rewards_dict=rewards_dict,
-            is_root=is_first,
-        ))
-        
+        trajectory_stats.append(
+            TrajectoryStats(
+                trajectory_id=trajectory_id,
+                reward=trajectory_reward,
+                num_steps=result.num_steps,
+                num_input_tokens=result.num_input_tokens,
+                num_output_tokens=result.num_output_tokens,
+                num_datums=len(result.datums),
+                rewards_dict=rewards_dict,
+                is_root=is_first,
+            )
+        )
+
         is_first = False
-    
+
     if not train_data:
         logger.warning(f"No train data found for any trajectory for task {task_id}")
-    
+
     return TrajectoryCollectionResult(
         datums=train_data,
         task_reward=task_reward,
         trajectory_stats=trajectory_stats,
         root_rewards_dict=root_rewards_dict,
     )
-

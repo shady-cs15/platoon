@@ -1,8 +1,10 @@
-from platoon.envs.base import Task
-import pandas as pd
 import os
 from typing import Literal
+
 import numpy as np
+import pandas as pd
+
+from platoon.envs.base import Task
 
 DATA = None
 TRAIN_DATA = None
@@ -30,15 +32,15 @@ def _load_data():
 def create_task_from_instance(x: dict) -> Task:
     task = Task(
         goal="",
-        id=x['instance_id'],
+        id=x["instance_id"],
         max_steps=15,
         misc={
-            "instance_id": x['instance_id'],
-            "repo": x['repo'],
-            "base_commit": x['base_commit'],
-            "problem_statement": x['problem_statement'],
-            "target": x['target'],
-        }
+            "instance_id": x["instance_id"],
+            "repo": x["repo"],
+            "base_commit": x["base_commit"],
+            "problem_statement": x["problem_statement"],
+            "target": x["target"],
+        },
     )
     return task
 
@@ -54,6 +56,9 @@ def get_task_ids(split: Literal["train", "val"]) -> list[str]:
 
 
 def get_task(task_id: str) -> Task:
+    _load_data()
+    assert TRAIN_TASK_ID_TO_INDEX is not None and VAL_TASK_ID_TO_INDEX is not None
+    assert TRAIN_DATA is not None and VAL_DATA is not None
     if task_id in TRAIN_TASK_ID_TO_INDEX:
         return create_task_from_instance(TRAIN_DATA.iloc[TRAIN_TASK_ID_TO_INDEX[task_id]])
     elif task_id in VAL_TASK_ID_TO_INDEX:

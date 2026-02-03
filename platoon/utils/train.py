@@ -1,8 +1,11 @@
-import torch
-import torch.distributed as dist
-from typing import Any, Dict
 import math
 from dataclasses import dataclass, field
+from typing import Any, Dict
+
+import torch
+import torch.distributed as dist
+from areal.api.cli_args import InferenceEngineConfig
+from areal.core.dist_rollout import redistribute
 from areal.utils.data import (
     all_gather_tensor_container,
     broadcast_tensor_container,
@@ -10,14 +13,13 @@ from areal.utils.data import (
     get_batch_size,
     tensor_container_to,
 )
-from areal.core.dist_rollout import redistribute
-from areal.api.cli_args import InferenceEngineConfig
 
 
 @dataclass
 class VariableBatchInferenceEngineConfig(InferenceEngineConfig):
     shuffle_cross_task: bool = field(default=False)
     ensure_batch_divisible_by: int = field(default=1)
+
 
 def set_expandable_segments(enable: bool) -> None:
     """Enable or disable expandable segments for cuda.
@@ -33,15 +35,15 @@ def bcast_and_split_from_rank0(
     device: torch.device | None = None,
 ) -> Dict[str, Any]:
     """Broadcast batch from rank 0 and split across all ranks.
-    
+
     This is used for LoRA training where only rank 0 submits rollouts
     due to a known bug with multi-rank LoRA inference.
-    
+
     Args:
         batch: The batch dict (only valid on rank 0, None on other ranks)
         granularity: Number of samples to keep together (e.g., group_size for GRPO)
         device: Device to move tensors to after broadcast
-        
+
     Returns:
         The local shard of the batch for this rank
     """
@@ -60,7 +62,7 @@ def bcast_and_split_from_rank0(
     local_batch = concat_padded_tensors(local_batch)
     # Make the sequences on each rank more balanced.
     return redistribute(local_batch, granularity=granularity).data
-    
+
 
 def _canonicalize_container_keys(x: Any) -> Any:
     """Recursively sort dict keys to enforce stable collective ordering across ranks.
@@ -70,11 +72,17 @@ def _canonicalize_container_keys(x: Any) -> Any:
     if isinstance(x, dict):
         return {k: _canonicalize_container_keys(x[k]) for k in sorted(x.keys())}
     if isinstance(x, list):
-        return [ _canonicalize_container_keys(v) for v in x ]
+        return [_canonicalize_container_keys(v) for v in x]
     return x
 
 
-def post_process_and_redistribute_tensor_container(batch: Dict[str, Any], shuffle: bool = True, ensure_divisible_by: int = 1, group: dist.ProcessGroup = None, local_sample_ratio: float = 1.0) -> Dict[str, Any]:
+def post_process_and_redistribute_tensor_container(
+    batch: Dict[str, Any],
+    shuffle: bool = True,
+    ensure_divisible_by: int = 1,
+    group: dist.ProcessGroup | None = None,
+    local_sample_ratio: float = 1.0,
+) -> Dict[str, Any]:
     # 1) Drop keys not shared by all ranks (for dicts outside lists)
     def _extract_dict_schema(x: Any, prefix: tuple[str, ...] = ()) -> Dict[tuple[str, ...], set]:
         schema: Dict[tuple[str, ...], set] = {}
@@ -120,15 +128,23 @@ def post_process_and_redistribute_tensor_container(batch: Dict[str, Any], shuffl
         batch = _prune_by_schema(batch)
 
     # 2) Ensure deterministic dict traversal order for nested structures before collectives
-    #batch = _canonicalize_container_keys(batch)
+    # batch = _canonicalize_container_keys(batch)
     all_data = all_gather_tensor_container(batch, group=group)
     batch_tensors = concat_padded_tensors(all_data)
-    
+
     # Determine batch size from a reliable 2D tensor key
-    if "attention_mask" in batch_tensors and torch.is_tensor(batch_tensors["attention_mask"]) and batch_tensors["attention_mask"].ndim >= 2:
+    if (
+        "attention_mask" in batch_tensors
+        and torch.is_tensor(batch_tensors["attention_mask"])
+        and batch_tensors["attention_mask"].ndim >= 2
+    ):
         batch_size = batch_tensors["attention_mask"].shape[0]
         index_device = batch_tensors["attention_mask"].device
-    elif "input_ids" in batch_tensors and torch.is_tensor(batch_tensors["input_ids"]) and batch_tensors["input_ids"].ndim >= 2:
+    elif (
+        "input_ids" in batch_tensors
+        and torch.is_tensor(batch_tensors["input_ids"])
+        and batch_tensors["input_ids"].ndim >= 2
+    ):
         batch_size = batch_tensors["input_ids"].shape[0]
         index_device = batch_tensors["input_ids"].device
     else:
@@ -169,8 +185,7 @@ def post_process_and_redistribute_tensor_container(batch: Dict[str, Any], shuffl
     start = rank * total // world_size
     end = (rank + 1) * total // world_size
     indices = indices[start:end]
-            
-    
+
     # Apply indexing only to tensors whose first dim equals batch size
     def _maybe_index(x):
         if torch.is_tensor(x) and x.ndim >= 1 and x.shape[0] == batch_size:

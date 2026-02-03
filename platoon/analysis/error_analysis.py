@@ -1,22 +1,30 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
+import time
 import uuid
 from dataclasses import dataclass
-import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from platoon.analysis.compare import (
-    iter_collection_dumps,
-    discover_input_paths as _discover_paths,
-    dump_to_temp_events_jsonl,
-    _response_to_text as _cmp_response_to_text,
-    _parse_json_mapping as _cmp_parse_json_mapping,
-    _log_once as _cmp_log_once,
     _cache_dir as _cmp_cache_dir,
+)
+from platoon.analysis.compare import (
+    _log_once as _cmp_log_once,
+)
+from platoon.analysis.compare import (
+    _parse_json_mapping as _cmp_parse_json_mapping,
+)
+from platoon.analysis.compare import (
+    _response_to_text as _cmp_response_to_text,
+)
+from platoon.analysis.compare import (
+    discover_input_paths as _discover_paths,
+)
+from platoon.analysis.compare import (
+    iter_collection_dumps,
 )
 from platoon.analysis.compute_metrics import is_success_for_collection
 
@@ -105,14 +113,13 @@ def _heuristic_collection_issues(dump_obj: dict, source: Path) -> List[ErrorIssu
 def _maybe_create_llm(model: Optional[str]):
     try:
         from platoon.utils.llm_client import create_llm_client
+
         return create_llm_client(model=model) if model else create_llm_client()
     except Exception:
         return None
 
 
-def llm_extract_issues_for_collection(
-    dump_obj: dict, source: Path, *, model: Optional[str] = None
-) -> List[ErrorIssue]:
+def llm_extract_issues_for_collection(dump_obj: dict, source: Path, *, model: Optional[str] = None) -> List[ErrorIssue]:
     client = _maybe_create_llm(model)
     if client is None:
         return _heuristic_collection_issues(dump_obj, source)
@@ -131,15 +138,13 @@ def llm_extract_issues_for_collection(
     user_prompt = (
         "You are analyzing an agent's multi-trajectory attempt for a single task.\n"
         "Summarize distinct failure/anti-patterns and noteworthy behaviors.\n"
-        "Return a JSON array of objects: {title, reason, step_refs}. step_refs should be a list of integer step indices.\n\n"
+        "Return a JSON array of objects: {title, reason, step_refs}. step_refs = list of step indices.\n\n"
         + "\n".join(lines)
     )
 
     try:
         resp = client.system_completion(
-            system_prompt=(
-                "Return valid JSON only. Be concise but precise. Titles should be short and descriptive."
-            ),
+            system_prompt=("Return valid JSON only. Be concise but precise. Titles should be short and descriptive."),
             user_prompt=user_prompt,
             temperature=0.2,
             max_tokens=900,
@@ -193,7 +198,8 @@ def llm_hierarchical_cluster(
     task_id = None
     if use_progress:
         try:
-            from rich.progress import Progress, BarColumn, TimeRemainingColumn, TextColumn
+            from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
+
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
@@ -220,14 +226,11 @@ def llm_hierarchical_cluster(
             user_prompt = (
                 "You are clustering error patterns.\n"
                 "Input is a list of group keys with a short representative description.\n"
-                "Return JSON mapping new_cluster_label -> list of group keys to merge.\n\n"
-                + "\n".join(lines)
+                "Return JSON mapping new_cluster_label -> list of group keys to merge.\n\n" + "\n".join(lines)
             )
             try:
                 resp = client.system_completion(
-                    system_prompt=(
-                        "Return strict JSON only. Use 3-8 concise labels."
-                    ),
+                    system_prompt=("Return strict JSON only. Use 3-8 concise labels."),
                     user_prompt=user_prompt,
                     temperature=0.2,
                     max_tokens=800,
@@ -382,9 +385,7 @@ def explain_error_issue(
     return fallback
 
 
-def get_cached_error_explanation(
-    it: ErrorIssue, *, cache_dir: Optional[str] = None
-) -> Optional[str]:
+def get_cached_error_explanation(it: ErrorIssue, *, cache_dir: Optional[str] = None) -> Optional[str]:
     try:
         base = _error_cache_dir(override=cache_dir)
         # Try v2 key first
@@ -417,7 +418,7 @@ def batch_explain_errors(
     total = len(issues)
     if show_progress and total > 0:
         try:
-            from rich.progress import Progress, BarColumn, TimeRemainingColumn, TextColumn
+            from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
 
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -496,7 +497,8 @@ def llm_cluster_issue_analyses(
     task_id = None
     if use_progress:
         try:
-            from rich.progress import Progress, BarColumn, TimeRemainingColumn, TextColumn
+            from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
+
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
@@ -537,7 +539,10 @@ def llm_cluster_issue_analyses(
                 text = _cmp_response_to_text(resp)
                 mapping = _cmp_parse_json_mapping(text)
                 if mapping is None:
-                    _cmp_log_once("error.cluster.analyses.parse_error", f"[error-analysis] LLM analyses clustering parse error; using current groups. head='{text[:120]}'")
+                    _cmp_log_once(
+                        "error.cluster.analyses.parse_error",
+                        f"[error-analysis] LLM analyses clustering parse error; using current groups. head='{text[:120]}'",  # noqa: E501
+                    )
                     break
                 if isinstance(mapping, dict) and mapping:
                     merged: Dict[str, List[int]] = {}
@@ -559,7 +564,9 @@ def llm_cluster_issue_analyses(
                                 pass
                         continue
             except Exception:
-                _cmp_log_once("error.cluster.analyses.error", "[error-analysis] LLM analyses clustering error; stopping.")
+                _cmp_log_once(
+                    "error.cluster.analyses.error", "[error-analysis] LLM analyses clustering error; stopping."
+                )
                 break
             break
     finally:
@@ -579,9 +586,12 @@ def llm_cluster_issue_analyses(
         total = len(ordered)
         singleton_labels = [lbl for lbl, its in out.items() if len(its) == 1]
         num_singletons = len(singleton_labels)
-        is_trivial_identity = (len(out) == total and num_singletons == total)
+        is_trivial_identity = len(out) == total and num_singletons == total
         if is_trivial_identity:
-            _cmp_log_once("error.cluster.analyses.trivial", "[error-analysis] LLM produced trivial singletons; using heuristic clustering.")
+            _cmp_log_once(
+                "error.cluster.analyses.trivial",
+                "[error-analysis] LLM produced trivial singletons; using heuristic clustering.",
+            )
             return ErrorClusters(_heuristic_cluster_from_texts(ordered))
         if total >= 4 and num_singletons / float(total) >= 0.6:
             # Keep non-singleton clusters and regroup the rest heuristically
@@ -601,9 +611,7 @@ def llm_cluster_issue_analyses(
     return ErrorClusters(out)
 
 
-def _heuristic_cluster_from_texts(
-    ordered: List[tuple[ErrorIssue, str]]
-) -> Dict[str, List[ErrorIssue]]:
+def _heuristic_cluster_from_texts(ordered: List[tuple[ErrorIssue, str]]) -> Dict[str, List[ErrorIssue]]:
     keywords = {
         "timeout": ["timeout", "time out", "timed out"],
         "tool": ["tool", "browser", "search", "api"],
@@ -675,5 +683,3 @@ __all__ = [
     "llm_extract_issues_for_collection",
     "llm_hierarchical_cluster",
 ]
-
-

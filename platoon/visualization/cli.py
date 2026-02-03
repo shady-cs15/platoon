@@ -5,9 +5,8 @@ import json
 import os
 import uuid
 from pathlib import Path
-from typing import List
 
-from .tui import TrajectoryViewer, run_viewer_from_jsonls, run_replay_from_jsonls
+from .tui import run_replay_from_jsonls, run_viewer_from_jsonls
 
 
 def main() -> None:
@@ -23,10 +22,14 @@ def main() -> None:
     replay_p = subparsers.add_parser("replay", help="Replay JSONL events from the start with a delay")
     replay_p.add_argument("paths", nargs="*", help="JSONL files to replay; multiple supported")
     replay_p.add_argument("--dir", dest="dir", default=None, help="Directory of JSONL files to replay (non-recursive)")
-    replay_p.add_argument("--delay", dest="delay", type=float, default=0.5, help="Seconds to wait between events (default: 0.5)")
+    replay_p.add_argument(
+        "--delay", dest="delay", type=float, default=0.5, help="Seconds to wait between events (default: 0.5)"
+    )
 
     # Show a saved dump (dict) by converting to events and running a temporary file
-    dump_p = subparsers.add_parser("show-dump", help="Show a serialized TrajectoryCollection dump JSON or JSONL file(s)")
+    dump_p = subparsers.add_parser(
+        "show-dump", help="Show a serialized TrajectoryCollection dump JSON or JSONL file(s)"
+    )
     dump_p.add_argument(
         "paths",
         nargs="*",
@@ -50,9 +53,18 @@ def main() -> None:
     ac_p.add_argument("--a-dir", dest="dir_a", default=None, help="Directory for method A inputs")
     ac_p.add_argument("--b", dest="paths_b", action="append", default=[], help="File for method B (repeatable)")
     ac_p.add_argument("--b-dir", dest="dir_b", default=None, help="Directory for method B inputs")
-    ac_p.add_argument("--analysis-model", dest="analysis_model", default=None, help="Optional LLM model for right-pane explanations")
-    ac_p.add_argument("--analyze-both-failed", dest="analyze_both_failed", action="store_true", help="Also run LLM analysis for pairs where both methods failed")
-    ac_p.add_argument("--analysis-cache", dest="analysis_cache", default=None, help="Directory to cache/store LLM analyses")
+    ac_p.add_argument(
+        "--analysis-model", dest="analysis_model", default=None, help="Optional LLM model for right-pane explanations"
+    )
+    ac_p.add_argument(
+        "--analyze-both-failed",
+        dest="analyze_both_failed",
+        action="store_true",
+        help="Also run LLM analysis for pairs where both methods failed",
+    )
+    ac_p.add_argument(
+        "--analysis-cache", dest="analysis_cache", default=None, help="Directory to cache/store LLM analyses"
+    )
     ac_p.add_argument("--no-ui", dest="no_ui", action="store_true", help="Only print summary JSON without opening UI")
 
     # Error analysis for a single method
@@ -64,7 +76,9 @@ def main() -> None:
     ae_p.add_argument("--paths", dest="paths", action="append", default=[], help="File path (repeatable)")
     ae_p.add_argument("--dir", dest="dir", default=None, help="Directory of inputs (json/jsonl)")
     ae_p.add_argument("--model", dest="model", default=None, help="Optional LLM model")
-    ae_p.add_argument("--analysis-cache", dest="analysis_cache", default=None, help="Directory to cache/store LLM analyses")
+    ae_p.add_argument(
+        "--analysis-cache", dest="analysis_cache", default=None, help="Directory to cache/store LLM analyses"
+    )
     ae_p.add_argument("--no-cluster", dest="no_cluster", action="store_true", help="Skip clustering step")
     ae_p.add_argument("--sample", dest="sample", type=int, default=None, help="Randomly sample N failures to analyze")
     ae_p.add_argument("--sample-seed", dest="sample_seed", type=int, default=None, help="Random seed for sampling")
@@ -121,9 +135,7 @@ def main() -> None:
         if getattr(args, "dir", None):
             d = Path(args.dir)
             if d.is_dir():
-                input_paths.extend(
-                    sorted(p for p in d.iterdir() if p.suffix.lower() in {".json", ".jsonl"})
-                )
+                input_paths.extend(sorted(p for p in d.iterdir() if p.suffix.lower() in {".json", ".jsonl"}))
         if getattr(args, "paths", None):
             input_paths.extend(Path(p) for p in args.paths)
         if not input_paths:
@@ -132,7 +144,10 @@ def main() -> None:
         # Prepare temporary event JSONL files produced from the dumps
         tmp_dir = Path(os.getenv("TMPDIR", "/tmp"))
         tmp_event_paths: list[Path] = []
-        from .event_sinks import write_events_from_dump_to_jsonl, trajectory_collection_dump_to_events
+        from .event_sinks import (
+            trajectory_collection_dump_to_events,
+            write_events_from_dump_to_jsonl,
+        )
 
         for src in input_paths:
             suffix = src.suffix.lower()
@@ -168,11 +183,13 @@ def main() -> None:
 
     elif args.cmd == "analyze-compare":
         from platoon.analysis.compare import (
-            discover_input_paths as discover_compare_paths,
-            compare_methods,
             batch_explain_compare,
+            compare_methods,
             llm_cluster_analyses,
             write_clusters_cache,
+        )
+        from platoon.analysis.compare import (
+            discover_input_paths as discover_compare_paths,
         )
         from platoon.visualization.compare_tui import run_compare_ui
 
@@ -202,7 +219,10 @@ def main() -> None:
             # If clustering is trivial (each item its own cluster), do a heuristic pass
             trivial = len(clusters) == len(explain_items) and all(len(v) == 1 for v in clusters.values())
             if trivial:
-                from platoon.analysis.compare import _heuristic_cluster_from_analyses  # type: ignore
+                from platoon.analysis.compare import (
+                    _heuristic_cluster_from_analyses,  # type: ignore
+                )
+
                 ordered = [(it, analyses.get(it.task_id, "")) for it in explain_items]
                 clusters = _heuristic_cluster_from_analyses(ordered)
             write_clusters_cache(clusters, cache_dir=getattr(args, "analysis_cache", None))
@@ -211,15 +231,21 @@ def main() -> None:
 
         if getattr(args, "no_ui", False):
             import json as _json
-            print(_json.dumps({
-                "counts": {
-                    "a_better": len(summary.a_better),
-                    "b_better": len(summary.b_better),
-                    "ties": len(summary.ties),
-                    "unmatched": len(summary.unmatched),
-                },
-                "analyses": analyses,
-            }, indent=2))
+
+            print(
+                _json.dumps(
+                    {
+                        "counts": {
+                            "a_better": len(summary.a_better),
+                            "b_better": len(summary.b_better),
+                            "ties": len(summary.ties),
+                            "unmatched": len(summary.unmatched),
+                        },
+                        "analyses": analyses,
+                    },
+                    indent=2,
+                )
+            )
         else:
             run_compare_ui(
                 summary,
@@ -230,10 +256,12 @@ def main() -> None:
 
     elif args.cmd == "analyze-errors":
         from platoon.analysis.error_analysis import (
-            discover_input_paths as discover_err_paths,
             analyze_errors,
             batch_explain_errors,
             llm_cluster_issue_analyses,
+        )
+        from platoon.analysis.error_analysis import (
+            discover_input_paths as discover_err_paths,
         )
         from platoon.visualization.error_tui import run_error_ui
 
@@ -252,6 +280,7 @@ def main() -> None:
         try:
             if getattr(args, "sample", None):
                 import random
+
                 def _is_failure(it):
                     try:
                         title = (it.title or "").lower()
@@ -259,6 +288,7 @@ def main() -> None:
                         return ("fail" in title) or bool(reason)
                     except Exception:
                         return True
+
                 failures = [it for it in issues if _is_failure(it)]
                 n = max(0, int(args.sample))
                 if n and len(failures) > n:
@@ -267,7 +297,10 @@ def main() -> None:
                 issues = failures
                 try:
                     import sys as _sys
-                    _sys.stderr.write(f"[analyze-errors] Sampling enabled: selected {len(issues)} failures for analysis.\n")
+
+                    _sys.stderr.write(
+                        f"[analyze-errors] Sampling enabled: selected {len(issues)} failures for analysis.\n"
+                    )
                     _sys.stderr.flush()
                 except Exception:
                     pass
@@ -283,15 +316,20 @@ def main() -> None:
             )
         if getattr(args, "no_cluster", False):
             from platoon.analysis.error_analysis import ErrorClusters
+
             clusters = ErrorClusters(clusters={})
         else:
             try:
-                clusters = llm_cluster_issue_analyses(issues, analyses if analyses else None, model=getattr(args, "model", None))
+                clusters = llm_cluster_issue_analyses(
+                    issues, analyses if analyses else None, model=getattr(args, "model", None)
+                )
             except Exception:
                 from platoon.analysis.error_analysis import ErrorClusters
+
                 clusters = ErrorClusters(clusters={})
         if getattr(args, "no_ui_e", False):
             import json as _json
+
             print(
                 _json.dumps(
                     {
@@ -306,13 +344,16 @@ def main() -> None:
                             }
                             for it in issues
                         ],
-                        "clusters": {label: [
-                            {
-                                "task_id": it.task_id,
-                                "title": it.title,
-                            }
-                            for it in items
-                        ] for label, items in clusters.clusters.items()},
+                        "clusters": {
+                            label: [
+                                {
+                                    "task_id": it.task_id,
+                                    "title": it.title,
+                                }
+                                for it in items
+                            ]
+                            for label, items in clusters.clusters.items()
+                        },
                     },
                     indent=2,
                 )
@@ -323,4 +364,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

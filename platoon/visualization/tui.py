@@ -3,34 +3,53 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Tree, Static, Input, Label
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Footer, Header, Input, Label, Static, Tree
 from textual.widgets.tree import TreeNode
-from textual.containers import Horizontal, VerticalScroll, Vertical
+
 try:
     from textual.containers import HorizontalScroll  # type: ignore
 except Exception:
     # Fallback for older Textual versions without HorizontalScroll
     HorizontalScroll = VerticalScroll  # type: ignore
-from textual.binding import Binding
-from textual.events import MouseDown, MouseMove, MouseUp
-
 from rich.console import Group
+from rich.json import JSON as RichJSON
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
-from rich.json import JSON as RichJSON
-from rich.markdown import Markdown
+from textual.binding import Binding
+from textual.events import MouseDown, MouseMove, MouseUp
+
+
+class PlayPauseFriendlyTree(Tree):
+    """A Tree widget that doesn't capture space key, allowing it to bubble up for play/pause."""
+
+    BINDINGS = [
+        # Override space binding to do nothing, letting it bubble up to app level
+        # The default Tree uses space for toggle_node (expand/collapse)
+        Binding("space", "noop", show=False),
+        # Keep enter for toggling nodes instead
+        Binding("enter", "toggle_node", "Toggle", show=False),
+    ]
+
+    def action_noop(self) -> None:
+        """Do nothing - let the key bubble up to the app."""
+        pass
+
 
 class ClickableResult(Static):
     """A clickable search result item with enhanced styling."""
-    
-    def __init__(self, text: str, index: int, search_panel: "SearchPanel", result_type: str = "unknown", context: str = "") -> None:
+
+    def __init__(
+        self, text: str, index: int, search_panel: "SearchPanel", result_type: str = "unknown", context: str = ""
+    ) -> None:
         # Create rich content with icons and colors
         content = self._create_rich_content(text, result_type, context)
         super().__init__(content)
@@ -38,9 +57,9 @@ class ClickableResult(Static):
         self.search_panel = search_panel
         self.result_type = result_type
         self.is_highlighted = False
-        
+
         self._apply_normal_styling()
-    
+
     def _apply_normal_styling(self) -> None:
         """Apply normal (non-highlighted) styling."""
         try:
@@ -49,12 +68,12 @@ class ClickableResult(Static):
             self.styles.padding = (0, 1)
             self.styles.background = bg_color
             self.styles.color = None  # Reset to default
-            self.styles.text_style = None  # Reset to default  
+            self.styles.text_style = None  # Reset to default
             self.styles.border = None  # Reset to default
             self.styles.margin = (0, 0, 0, 0)
         except Exception:
             pass
-    
+
     def _apply_highlighted_styling(self) -> None:
         """Apply highlighted styling."""
         try:
@@ -66,7 +85,7 @@ class ClickableResult(Static):
             self.styles.margin = (0, 0, 0, 0)
         except Exception:
             pass
-    
+
     def set_highlighted(self, highlighted: bool) -> None:
         """Set whether this result is highlighted."""
         if self.is_highlighted != highlighted:
@@ -83,7 +102,7 @@ class ClickableResult(Static):
                     self.parent.refresh()
             except Exception:
                 pass
-    
+
     def _get_type_colors(self, result_type: str) -> tuple[str, str]:
         """Get subtle background colors based on result type."""
         type_colors = {
@@ -92,24 +111,17 @@ class ClickableResult(Static):
             "task": ("grey19", "grey50"),
             "collection": ("grey16", "grey48"),
             "fork": ("grey14", "grey46"),
-            "unknown": ("grey18", "grey48")
+            "unknown": ("grey18", "grey48"),
         }
         return type_colors.get(result_type, ("grey18", "grey48"))
-    
+
     def _create_rich_content(self, text: str, result_type: str, context: str) -> str:
         """Create clean content with minimal icons."""
         # Simpler icons for different types
-        icons = {
-            "trajectory": "▶",
-            "step": "•",
-            "task": "◦",
-            "collection": "▼",
-            "fork": "↳",
-            "unknown": "·"
-        }
-        
+        icons = {"trajectory": "▶", "step": "•", "task": "◦", "collection": "▼", "fork": "↳", "unknown": "·"}
+
         icon = icons.get(result_type, "·")
-        
+
         # Clean single-line format
         if context and len(context.strip()) > 0:
             # Truncate context if too long and clean it up
@@ -119,7 +131,7 @@ class ClickableResult(Static):
             return f"{icon} {text} — {context}"
         else:
             return f"{icon} {text}"
-    
+
     def on_click(self) -> None:
         """Handle click on this result."""
         try:
@@ -136,7 +148,7 @@ class Event:
 
 class SearchPanel(Static):
     """Search panel with input field and search results list."""
-    
+
     def __init__(self, viewer: "TrajectoryViewer") -> None:
         super().__init__(id="search_panel")
         self.viewer = viewer
@@ -157,12 +169,12 @@ class SearchPanel(Static):
             self.styles.overflow_y = "hidden"
         except Exception:
             pass
-    
+
     def compose(self) -> ComposeResult:  # type: ignore[override]
         with Vertical():
             self.search_input = Input(placeholder="Search node labels and content...", id="search_input")
             yield self.search_input
-            
+
             # Results count label
             self.results_label = Label("No search results", id="search_results_label")
             try:
@@ -171,7 +183,7 @@ class SearchPanel(Static):
             except Exception:
                 pass
             yield self.results_label
-            
+
             # Results container
             self.results_container = VerticalScroll(id="search_results_container")
             try:
@@ -181,7 +193,7 @@ class SearchPanel(Static):
             except Exception:
                 pass
             yield self.results_container
-    
+
     def show(self) -> None:
         """Show the search panel."""
         self.visible = True
@@ -193,7 +205,7 @@ class SearchPanel(Static):
             pass
         if self.search_input:
             self.search_input.focus()
-    
+
     def hide(self) -> None:
         """Hide the search panel."""
         self.visible = False
@@ -202,36 +214,36 @@ class SearchPanel(Static):
             self.styles.height = 0
         except Exception:
             pass
-    
+
     def toggle(self) -> None:
         """Toggle search panel visibility."""
         if self.visible:
             self.hide()
         else:
             self.show()
-    
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle search when user presses Enter."""
         if event.input == self.search_input:
             query = event.value.strip()
             if query:
                 self.viewer.perform_search(query)
-    
+
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle real-time search as user types."""
         if event.input == self.search_input:
             query = event.value.strip()
             self.viewer.perform_search(query)
-    
 
-    
-    def update_results(self, results: List[TreeNode[str]], query: str, total_counts: Optional[Dict[str, int]] = None) -> None:
+    def update_results(
+        self, results: List[TreeNode[str]], query: str, total_counts: Optional[Dict[str, int]] = None
+    ) -> None:
         """Update the search results display with grouping and enhanced styling."""
         self.current_results = results
-        
+
         # Group results by type
         grouped_results = self._group_results_by_type(results)
-        
+
         # Update results count label with breakdown including denominators
         if self.results_label:
             if not query:
@@ -241,7 +253,7 @@ class SearchPanel(Static):
             else:
                 breakdown = self._create_results_breakdown(grouped_results, total_counts)
                 self.results_label.update(f"Search results for '{query}': {breakdown}")
-        
+
         # Update results container
         if self.results_container:
             # Clear ALL previous content (including headers and results)
@@ -252,7 +264,7 @@ class SearchPanel(Static):
             except Exception:
                 pass
             self.result_widgets.clear()
-            
+
             # Add results grouped by type
             result_index = 0
             for result_type, type_results in grouped_results.items():
@@ -262,24 +274,24 @@ class SearchPanel(Static):
                         # Get appropriate color for each type
                         type_colors = {
                             "collection": "magenta",
-                            "trajectory": "bright_blue", 
+                            "trajectory": "bright_blue",
                             "task": "yellow",
                             "step": "green",
                             "fork": "cyan",
-                            "unknown": "grey"
+                            "unknown": "grey",
                         }
                         header_color = type_colors.get(result_type, "cyan")
                         # Create proper plural forms
                         plurals = {
                             "collection": "Collections",
-                            "trajectory": "Trajectories", 
+                            "trajectory": "Trajectories",
                             "task": "Tasks",
                             "step": "Steps",
                             "fork": "Forks",
-                            "unknown": "Unknown"
+                            "unknown": "Unknown",
                         }
                         header_text = plurals.get(result_type, f"{result_type.title()}s")
-                        
+
                         # Create the header and force color styling
                         type_header = Label(header_text)
                         try:
@@ -289,27 +301,28 @@ class SearchPanel(Static):
                             type_header.styles.margin = (1, 0, 0, 1)
                             # Also try setting it on the Label's renderable
                             from rich.text import Text as RichText
+
                             colored_text = RichText(header_text, style=f"bold {header_color}")
                             type_header.update(colored_text)
                         except Exception:
                             pass
                         self.results_container.mount(type_header)
-                    
+
                     # Add results for this type
                     for node in type_results:
                         label_text = self._format_result_label(node, result_index)
                         context = self._extract_result_context(node)
                         result_widget = ClickableResult(label_text, result_index, self, result_type, context)
-                        
+
                         self.result_widgets.append(result_widget)
                         self.results_container.mount(result_widget)
                         result_index += 1
-    
+
     def _format_result_label(self, node: TreeNode[str], index: int) -> str:
         """Format a search result for display in the list."""
         # Get simplified node path - just the node itself and immediate parent
         current_label = str(node.label)
-        
+
         # For steps, show the step info more clearly
         if "step" in current_label.lower():
             # Extract step number and summary
@@ -320,13 +333,13 @@ class SearchPanel(Static):
                 if len(summary) > 50:
                     summary = summary[:47] + "..."
                 return f"{step_info}: {summary}"
-        
+
         # For other types, show a clean version
         if len(current_label) > 60:
             current_label = current_label[:57] + "..."
-        
+
         return current_label
-    
+
     def _group_results_by_type(self, results: List[TreeNode[str]]) -> Dict[str, List[TreeNode[str]]]:
         """Group search results by their type."""
         groups: Dict[str, List[TreeNode[str]]] = {
@@ -335,19 +348,19 @@ class SearchPanel(Static):
             "task": [],
             "step": [],
             "fork": [],
-            "unknown": []
+            "unknown": [],
         }
-        
+
         for node in results:
             node_type = self._detect_node_type(node)
             groups[node_type].append(node)
-        
+
         return groups
-    
+
     def _detect_node_type(self, node: TreeNode[str]) -> str:
         """Detect the type of a tree node."""
         label = str(node.label).lower()
-        
+
         if "collection:" in label:
             return "collection"
         elif "traj:" in label:
@@ -360,12 +373,12 @@ class SearchPanel(Static):
             return "fork"
         else:
             return "unknown"
-    
+
     def _extract_result_context(self, node: TreeNode[str]) -> str:
         """Extract context/preview from node data."""
-        if not hasattr(node, 'data') or not node.data:
+        if not hasattr(node, "data") or not node.data:
             return ""
-        
+
         try:
             data = node.data
             if isinstance(data, dict):
@@ -376,13 +389,13 @@ class SearchPanel(Static):
                         code = payload["code"]
                         if isinstance(code, str):
                             # Get first line of code
-                            first_line = code.split('\n')[0].strip()
+                            first_line = code.split("\n")[0].strip()
                             return first_line
                     elif "thought" in payload:
                         thought = payload["thought"]
                         if isinstance(thought, str):
                             # Get first sentence of thought
-                            first_sentence = thought.split('.')[0].strip()
+                            first_sentence = thought.split(".")[0].strip()
                             return first_sentence
                     elif "goal" in payload:
                         goal = payload["goal"]
@@ -392,31 +405,33 @@ class SearchPanel(Static):
                         output = payload["output"]
                         if isinstance(output, str):
                             # Get first line of output
-                            first_line = output.split('\n')[0].strip()
+                            first_line = output.split("\n")[0].strip()
                             return first_line
         except Exception:
             pass
-        
+
         return ""
-    
-    def _create_results_breakdown(self, grouped_results: Dict[str, List[TreeNode[str]]], total_counts: Optional[Dict[str, int]] = None) -> str:
+
+    def _create_results_breakdown(
+        self, grouped_results: Dict[str, List[TreeNode[str]]], total_counts: Optional[Dict[str, int]] = None
+    ) -> str:
         """Create a breakdown string of results by type with denominators."""
         # Proper plural forms for count display
         plurals = {
             "collection": "collections",
             "trajectory": "trajectories",  # Correct spelling!
             "task": "tasks",
-            "step": "steps", 
+            "step": "steps",
             "fork": "forks",
-            "unknown": "unknown"
+            "unknown": "unknown",
         }
-        
+
         breakdown_parts = []
         for result_type, type_results in grouped_results.items():
             if type_results:
                 match_count = len(type_results)
                 plural_name = plurals.get(result_type, f"{result_type}s")
-                
+
                 # Add denominator if total counts are available
                 if total_counts and result_type in total_counts:
                     total_count = total_counts[result_type]
@@ -425,9 +440,9 @@ class SearchPanel(Static):
                 else:
                     # Fallback to original format if no totals available
                     breakdown_parts.append(f"{match_count} {plural_name}")
-        
+
         return ", ".join(breakdown_parts) if breakdown_parts else "no results"
-    
+
     def clear_results(self) -> None:
         """Clear the search results display."""
         self.current_results.clear()
@@ -442,28 +457,28 @@ class SearchPanel(Static):
             except Exception:
                 pass
             self.result_widgets.clear()
-    
+
     def highlight_result(self, index: int) -> None:
         """Highlight a specific search result by index."""
         # Clear ALL previous highlights (defensive approach)
         for i, widget in enumerate(self.result_widgets):
             if widget.is_highlighted:
                 widget.set_highlighted(False)
-        
+
         # Set new highlight
         self.highlighted_index = index
         if 0 <= index < len(self.result_widgets):
             self.result_widgets[index].set_highlighted(True)
-            
+
             # Scroll to make the highlighted result visible
             try:
                 highlighted_widget = self.result_widgets[index]
                 if self.results_container:
                     # Try to scroll the highlighted widget into view
                     # Use a more compatible scrolling approach
-                    if hasattr(self.results_container, 'scroll_to_widget'):
+                    if hasattr(self.results_container, "scroll_to_widget"):
                         self.results_container.scroll_to_widget(highlighted_widget)
-                    elif hasattr(highlighted_widget, 'scroll_visible'):
+                    elif hasattr(highlighted_widget, "scroll_visible"):
                         highlighted_widget.scroll_visible()
                     # Force a refresh of the entire container
                     self.results_container.refresh()
@@ -474,7 +489,7 @@ class SearchPanel(Static):
 class TrajectoryTree(Static):
     def __init__(self) -> None:
         super().__init__()
-        self.tree_widget: Optional[Tree[str]] = None
+        self.tree_widget: Optional[PlayPauseFriendlyTree[str]] = None
         self.traj_nodes: Dict[str, TreeNode[str]] = {}
         # Map grouping label -> group node to avoid duplicate "unlabeled" nodes
         self.group_nodes: Dict[str, TreeNode[str]] = {}
@@ -526,44 +541,44 @@ class TrajectoryTree(Static):
         self.current_search_query = ""
 
     def compose(self) -> ComposeResult:  # type: ignore[override]
-        self.tree_widget = Tree("Trajectory Collections")
+        self.tree_widget = PlayPauseFriendlyTree("Trajectory Collections")
         yield self.tree_widget
-    
+
     def search_nodes(self, query: str) -> List[TreeNode[str]]:
         """Search for nodes matching the query in labels and content."""
         if not query or not self.tree_widget:
             return []
-        
+
         query_lower = query.lower()
         results: List[TreeNode[str]] = []
-        
+
         def search_node_recursive(node: TreeNode[str]) -> None:
             # Search in node label
             label_text = str(node.label).lower()
             if query_lower in label_text:
                 results.append(node)
-            
+
             # Search in node data/content
-            if hasattr(node, 'data') and node.data:
+            if hasattr(node, "data") and node.data:
                 content_text = self._extract_searchable_content(node.data).lower()
                 if query_lower in content_text:
                     results.append(node)
-            
+
             # Recursively search children
             for child in node.children:
                 search_node_recursive(child)
-        
+
         # Start search from root
         search_node_recursive(self.tree_widget.root)
         return results
-    
+
     def _extract_searchable_content(self, data: Any) -> str:
         """Extract searchable text content from node data."""
         if not data:
             return ""
-        
+
         content_parts = []
-        
+
         if isinstance(data, dict):
             # Extract payload content
             payload = data.get("payload", {})
@@ -574,6 +589,7 @@ class TrajectoryTree(Static):
                     elif isinstance(value, (dict, list)):
                         try:
                             import json
+
                             content_parts.append(json.dumps(value))
                         except Exception:
                             content_parts.append(str(value))
@@ -583,46 +599,46 @@ class TrajectoryTree(Static):
             content_parts.append(data)
         else:
             content_parts.append(str(data))
-        
+
         return " ".join(content_parts)
-    
+
     def perform_search(self, query: str) -> None:
         """Perform search and update search results."""
         self.current_search_query = query
         self.search_results = self.search_nodes(query)
         self.current_search_index = -1
-        
+
         # If we have results, highlight the first one
         if self.search_results:
             self.current_search_index = 0
             self._highlight_search_result()
-        
+
         # Return results for SearchPanel to display
         return self.search_results
-    
+
     def next_search_result(self) -> None:
         """Navigate to next search result."""
         if not self.search_results:
             return
-        
+
         self.current_search_index = (self.current_search_index + 1) % len(self.search_results)
         self._highlight_search_result()
-    
+
     def previous_search_result(self) -> None:
         """Navigate to previous search result."""
         if not self.search_results:
             return
-        
+
         self.current_search_index = (self.current_search_index - 1) % len(self.search_results)
         self._highlight_search_result()
-    
+
     def _highlight_search_result(self) -> None:
         """Highlight and focus current search result."""
         if not self.search_results or self.current_search_index < 0:
             return
-        
+
         current_node = self.search_results[self.current_search_index]
-        
+
         # Expand parents to make the node visible
         node = current_node
         while node is not None:
@@ -631,7 +647,7 @@ class TrajectoryTree(Static):
             except Exception:
                 pass
             node = getattr(node, "parent", None)
-        
+
         # Select and focus the node
         if self.tree_widget:
             for method_name in ("select_node", "select"):
@@ -642,7 +658,7 @@ class TrajectoryTree(Static):
                         break
                     except Exception:
                         pass
-            
+
             # Scroll to make the node visible
             try:
                 scroll_to_node = getattr(self.tree_widget, "scroll_to_node", None)
@@ -650,33 +666,26 @@ class TrajectoryTree(Static):
                     scroll_to_node(current_node)
             except Exception:
                 pass
-    
+
     def clear_search(self) -> None:
         """Clear search results."""
         self.search_results.clear()
         self.current_search_index = -1
         self.current_search_query = ""
-    
+
     def focus_result_by_index(self, index: int) -> None:
         """Focus on a specific search result by index."""
         if 0 <= index < len(self.search_results):
             self.current_search_index = index
             self._highlight_search_result()
-    
+
     def get_total_counts_by_type(self) -> Dict[str, int]:
         """Get total count of each node type in the tree."""
         if not self.tree_widget:
             return {}
-        
-        counts: Dict[str, int] = {
-            "collection": 0,
-            "trajectory": 0,
-            "task": 0,
-            "step": 0,
-            "fork": 0,
-            "unknown": 0
-        }
-        
+
+        counts: Dict[str, int] = {"collection": 0, "trajectory": 0, "task": 0, "step": 0, "fork": 0, "unknown": 0}
+
         def count_nodes_recursive(node: TreeNode[str]) -> None:
             # Determine node type using the same logic as SearchPanel
             label = str(node.label).lower()
@@ -692,11 +701,11 @@ class TrajectoryTree(Static):
                 counts["fork"] += 1
             else:
                 counts["unknown"] += 1
-            
+
             # Recursively count children
             for child in node.children:
                 count_nodes_recursive(child)
-        
+
         # Start counting from root
         count_nodes_recursive(self.tree_widget.root)
         return counts
@@ -773,7 +782,7 @@ class SplitDivider(Static):
         If *parent* is supplied, the trajectory node will be created as a child
         of that parent instead of at the tree root.  Subsequent calls will
         return the same node regardless of *parent*.
-        
+
         If *expand* is True (default), the node will be expanded when created.
         Set to False during bulk loading for better performance.
         """
@@ -929,7 +938,9 @@ class SplitDivider(Static):
             # Keep payload's reward in sync if present so DetailsPanel shows latest
             try:
                 if isinstance(node.data, dict) and isinstance(node.data.get("payload"), dict):
-                    node.data["payload"]["reward"] = self.traj_rewards.get(traj_id, node.data["payload"].get("reward", 0.0))
+                    node.data["payload"]["reward"] = self.traj_rewards.get(
+                        traj_id, node.data["payload"].get("reward", 0.0)
+                    )
             except Exception:
                 pass
             # Ensure steps subgroup exists (via mapping)
@@ -1065,10 +1076,12 @@ class SplitDivider(Static):
             node.data["__orig_label"] = original_label
             # Apply a temporary highlight style
             from rich.text import Text as RichText
+
             highlighted = RichText(original_label, style="bold reverse")
             self._set_node_label(node, highlighted)  # type: ignore[arg-type]
             # Schedule highlight removal
             import asyncio as _asyncio
+
             async def _clear() -> None:
                 try:
                     await _asyncio.sleep(duration)
@@ -1087,6 +1100,7 @@ class SplitDivider(Static):
                             pass
                 except Exception:
                     pass
+
             _asyncio.create_task(_clear())
         except Exception:
             return
@@ -1108,7 +1122,7 @@ class SplitDivider(Static):
                     steps_node.expand()
                 except Exception:
                     pass
-        
+
         # Collapse all other expanded trajectories
         to_collapse = [tid for tid in self.expanded_trajs if tid != keep_traj_id]
         for tid in to_collapse:
@@ -1286,31 +1300,31 @@ class TrajectoryViewer(App):
         # Reset UI and render first record again
         self.tree_widget.reset()
         asyncio.create_task(self._handle_record(self._replay_records[0]))
-    
+
     def action_toggle_search(self) -> None:
         """Toggle search panel visibility."""
         self.search_panel.toggle()
-    
+
     def action_close_search(self) -> None:
         """Close search panel and clear search results."""
         self.search_panel.hide()
         self.search_panel.clear_results()
         self.tree_widget.clear_search()
-    
+
     def action_next_search(self) -> None:
         """Navigate to next search result."""
         self.tree_widget.next_search_result()
         # Update highlight in search panel
-        if hasattr(self.tree_widget, 'current_search_index'):
+        if hasattr(self.tree_widget, "current_search_index"):
             self.search_panel.highlight_result(self.tree_widget.current_search_index)
-    
+
     def action_prev_search(self) -> None:
         """Navigate to previous search result."""
         self.tree_widget.previous_search_result()
         # Update highlight in search panel
-        if hasattr(self.tree_widget, 'current_search_index'):
+        if hasattr(self.tree_widget, "current_search_index"):
             self.search_panel.highlight_result(self.tree_widget.current_search_index)
-    
+
     def perform_search(self, query: str) -> None:
         """Perform search in tree widget and update search panel."""
         if query:
@@ -1318,12 +1332,12 @@ class TrajectoryViewer(App):
             total_counts = self.tree_widget.get_total_counts_by_type()
             self.search_panel.update_results(results, query, total_counts)
             # Highlight the first result if any results found
-            if results and hasattr(self.tree_widget, 'current_search_index'):
+            if results and hasattr(self.tree_widget, "current_search_index"):
                 self.search_panel.highlight_result(self.tree_widget.current_search_index)
         else:
             self.tree_widget.clear_search()
             self.search_panel.clear_results()
-    
+
     def focus_search_result(self, index: int) -> None:
         """Focus on a specific search result by index."""
         self.tree_widget.focus_result_by_index(index)
@@ -1556,7 +1570,6 @@ class TrajectoryViewer(App):
 
     async def _replay_jsonls(self, paths: List[Path]) -> None:
         """Replay events from multiple JSONL files, ordered by timestamp, starting paused."""
-        delay = float(self.replay_delay or 0.0)
         all_records: List[Dict[str, Any]] = []
         for p in paths:
             try:
@@ -1708,9 +1721,11 @@ def run_viewer_from_jsonls(paths: List[str | Path], *, start_at_end: bool = Fals
     app = TrajectoryViewer(jsonl_paths=paths, start_at_end=start_at_end)
     app.run()
 
+
 def run_replay_from_jsonl(path: str | Path, *, delay: float = 0.5) -> None:
     app = TrajectoryViewer(jsonl_path=path, start_at_end=False, replay_delay=delay)
     app.run()
+
 
 def run_replay_from_jsonls(paths: List[str | Path], *, delay: float = 0.5) -> None:
     app = TrajectoryViewer(jsonl_paths=paths, start_at_end=False, replay_delay=delay)
@@ -1723,7 +1738,7 @@ class DetailsPanel(Static):
     - For step payloads (dicts), shows key panels; code fields are syntax highlighted.
     - For other payloads, pretty-prints JSON when possible.
     """
-    
+
     def __init__(self) -> None:
         super().__init__()
         self.current_content: str = ""
@@ -1749,21 +1764,21 @@ class DetailsPanel(Static):
 
         payload_type = payload.get("type") if isinstance(payload, dict) else None
         data = payload.get("payload") if isinstance(payload, dict) else payload
-        
+
         # Store content for searching
         self.current_content = self._extract_content_text(data)
 
         renderable = self._render_data(data)
         title = f"{label}" if payload_type is None else f"{label} · {payload_type}"
         self.update(Panel(renderable, title=title, border_style="cyan"))
-    
+
     def _extract_content_text(self, data: Any) -> str:
         """Extract all text content for searching."""
         if not data:
             return ""
-        
+
         content_parts = []
-        
+
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str):
@@ -1771,6 +1786,7 @@ class DetailsPanel(Static):
                 elif isinstance(value, (dict, list)):
                     try:
                         import json
+
                         content_parts.append(f"{key}: {json.dumps(value)}")
                     except Exception:
                         content_parts.append(f"{key}: {str(value)}")
@@ -1780,9 +1796,9 @@ class DetailsPanel(Static):
             content_parts.append(data)
         else:
             content_parts.append(str(data))
-        
+
         return " ".join(content_parts)
-    
+
     def search_content(self, query: str) -> bool:
         """Search for query in current content. Returns True if found."""
         if not query or not self.current_content:
@@ -1799,6 +1815,7 @@ class DetailsPanel(Static):
         elif isinstance(data, list):
             try:
                 import json as _json
+
                 dumped = _json.dumps(data, indent=2, ensure_ascii=False)
                 return Syntax(dumped, "json", word_wrap=True, line_numbers=False)
             except Exception:
@@ -1826,6 +1843,7 @@ class DetailsPanel(Static):
         if isinstance(value, (dict, list)):
             try:
                 import json as _json
+
                 dumped = _json.dumps(value, indent=2, ensure_ascii=False)
                 json_view = Syntax(dumped, "json", word_wrap=True, line_numbers=False)
             except Exception:
@@ -1838,4 +1856,3 @@ class DetailsPanel(Static):
             except Exception:
                 return Panel(Text(value, no_wrap=False, overflow="fold"), title=key)
         return Panel(Text(str(value), no_wrap=False, overflow="fold"), title=key)
-

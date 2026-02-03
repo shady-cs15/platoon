@@ -1,32 +1,28 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import uuid
-from typing import Any, Protocol, runtime_checkable, TypeAlias
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 
 @runtime_checkable
 class Env(Protocol):
-    async def reset(self) -> Observation:
-        ...
+    async def reset(self) -> Observation: ...
 
-    async def step(self, action: Action) -> Observation:
-        ...
-    
-    async def close(self) -> None:
-        ...
+    async def step(self, action: Action) -> Observation: ...
 
-    async def observe(self) -> Observation:
-        ...
+    async def close(self) -> None: ...
+
+    async def observe(self) -> Observation: ...
 
     @property
-    def task(self) -> Task:
-        ...
+    def task(self) -> Task: ...
+
 
 @runtime_checkable
 class ForkableEnv(Env, Protocol):
-    async def fork(self, task: Task) -> ForkableEnv:
-        ...
+    async def fork(self, task: Task) -> ForkableEnv: ...
+
 
 @dataclass
 class Task:
@@ -34,21 +30,31 @@ class Task:
     id: str | None = None
     max_steps: int | None = None
     misc: dict[str, Any] = field(default_factory=dict)
+    fork_strategy: Literal["task", "subtask"] = "subtask"
 
     def __str__(self) -> str:
         if self.max_steps:
-            return f"Your Goal: {self.goal}\nBudget: You have a total budget of {self.max_steps} steps to complete this task."
+            return f"Your Goal: {self.goal}\nBudget: You have a total budget of {self.max_steps} steps to complete this task."  # noqa: E501
         else:
             return f"Your Goal: {self.goal}"
 
-    def fork(self, goal: str, max_steps: int | None = None, **kwargs) -> SubTask:
-        return SubTask(
-            goal=goal,
-            max_steps=max_steps,
-            id=str(uuid.uuid4()),
-            parent_tasks=[self],
-            misc=self.misc,
-        )
+    def fork(self, goal: str, max_steps: int | None = None, **kwargs) -> Task | SubTask:
+        if self.fork_strategy == "task":
+            return Task(
+                goal=goal,
+                max_steps=max_steps,
+                id=str(uuid.uuid4()),
+                misc=self.misc,
+                fork_strategy=self.fork_strategy,
+            )
+        else:
+            return SubTask(
+                goal=goal,
+                max_steps=max_steps,
+                id=str(uuid.uuid4()),
+                parent_tasks=[self],
+                misc=self.misc,
+            )
 
     @classmethod
     def from_dict(cls, task_dict: dict) -> Task:
@@ -62,7 +68,9 @@ class SubTask(Task):
     def __str__(self) -> str:
         task_str = super().__str__()
         # Parent Tasks
-        parent_tasks_str = "For additional context, here are the parent tasks in the stack so far (most recent first):\n"
+        parent_tasks_str = (
+            "For additional context, here are the parent tasks in the stack so far (most recent first):\n"
+        )
         depth = len(self.parent_tasks)
         if depth > 0:
             # Add parent goals in reverse order (most recent first)
@@ -72,7 +80,7 @@ class SubTask(Task):
             parent_tasks_str = parent_tasks_str.rstrip()
         else:
             parent_tasks_str += "No parent tasks. This is the root task."
-                
+
         return f"{task_str}\n\n{parent_tasks_str}"
 
     def fork(self, goal: str, max_steps: int | None = None, **kwargs) -> SubTask:
@@ -94,7 +102,7 @@ class SubTask(Task):
             id=task.id,
             misc=task.misc,
         )
-    
+
     @classmethod
     def from_dict(cls, task_dict: dict) -> SubTask:
         if "parent_tasks" not in task_dict:
@@ -109,13 +117,14 @@ class SubTask(Task):
             misc=task_dict["misc"],
         )
 
+
 @dataclass
 class Observation:
     task: Task | None = None
     finished: bool = False
     reward: float = 0.0
     misc: dict = field(default_factory=dict)
-    
+
 
 Action: TypeAlias = Any
 ResetAction: Action = "RESET"

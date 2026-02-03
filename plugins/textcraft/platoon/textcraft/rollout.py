@@ -1,17 +1,17 @@
-from .env import TextCraftEnv, TextCraftRecursiveEnv
-from .agent import TextCraftAgent, TextCraftRecursiveAgent
+import asyncio
+import os
+from logging import getLogger
+
 from platoon.config_defs import RolloutConfig
-from platoon.utils.llm_client import LLMClient, LiteLLMClient
+from platoon.envs.base import Task
 from platoon.episode.context import current_trajectory_collection
 from platoon.episode.loop import run_episode
 from platoon.episode.trajectory import TrajectoryCollection
+from platoon.utils.llm_client import LLMClient
 from platoon.visualization.event_sinks import JsonlFileSink
-import os
-import asyncio
-from contextlib import suppress
-from platoon.envs.base import Task
-from logging import getLogger
 
+from .agent import TextCraftAgent, TextCraftRecursiveAgent
+from .env import TextCraftEnv, TextCraftRecursiveEnv
 
 logger = getLogger("platoon.textcraft.rollout")
 
@@ -30,28 +30,20 @@ async def run_rollout(task: Task, config: RolloutConfig) -> dict | TrajectoryCol
         agent = TextCraftAgent(llm_client=llm_client)
         traj_collection = TrajectoryCollection()
         current_trajectory_collection.set(traj_collection)
-       
-        events_path = os.path.join(
-            config.output_dir,
-            "events",
-            f"events_{task.id}_{traj_collection.id}.jsonl"
-        )
-       
+
+        events_path = os.path.join(config.output_dir, "events", f"events_{task.id}_{traj_collection.id}.jsonl")
+
         traj_collection.register_event_handlers(
-            JsonlFileSink(
-                events_path,
-                collection_id=traj_collection.id,
-                process_id=os.getpid()
-            )
+            JsonlFileSink(events_path, collection_id=traj_collection.id, process_id=os.getpid())
         )
-        
+
         if config.verbose:
             logger.info(f"Process {os.getpid()}: Starting rollout for task {task.id}")
-        
-        rollout_task = asyncio.create_task(run_episode(agent, env))
-        
+
+        rollout_task = asyncio.create_task(run_episode(agent, env, timeout=config.step_timeout))
+
         try:
-            final_obs = await asyncio.wait_for(rollout_task, timeout=config.timeout)
+            _ = await asyncio.wait_for(rollout_task, timeout=config.timeout)
         except asyncio.TimeoutError:
             if config.verbose:
                 logger.error(f"Process {os.getpid()}: Rollout timed out for task {task.id}")
@@ -60,15 +52,16 @@ async def run_rollout(task: Task, config: RolloutConfig) -> dict | TrajectoryCol
             try:
                 await asyncio.wait_for(rollout_task, timeout=5.0)
             except (asyncio.TimeoutError, asyncio.CancelledError):
-                logger.warning(f"Process {os.getpid()}: Task cancellation did not complete in 5s for {task.id}, abandoning")
+                logger.warning(
+                    f"Process {os.getpid()}: Task cancellation did not complete in 5s for {task.id}, abandoning"
+                )
             raise
-        
+
         if config.return_dict:
             return current_trajectory_collection.get().to_dict()
         else:
             return current_trajectory_collection.get()
-        
-       
+
     except Exception as e:
         if config.verbose:
             print(f"Error running rollout for task {task.id}: {e}")
@@ -94,28 +87,20 @@ async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | Tra
         agent = TextCraftRecursiveAgent(llm_client=llm_client)
         traj_collection = TrajectoryCollection()
         current_trajectory_collection.set(traj_collection)
-        
-        events_path = os.path.join(
-            config.output_dir,
-            "events",
-            f"events_{task.id}_{traj_collection.id}.jsonl"
-        )
-       
+
+        events_path = os.path.join(config.output_dir, "events", f"events_{task.id}_{traj_collection.id}.jsonl")
+
         traj_collection.register_event_handlers(
-            JsonlFileSink(
-                events_path,
-                collection_id=traj_collection.id,
-                process_id=os.getpid()
-            )
+            JsonlFileSink(events_path, collection_id=traj_collection.id, process_id=os.getpid())
         )
-        
+
         if config.verbose:
             logger.info(f"Process {os.getpid()}: Starting rollout for task {task.id}")
-        
-        rollout_task = asyncio.create_task(run_episode(agent, env))
-        
+
+        rollout_task = asyncio.create_task(run_episode(agent, env, timeout=config.step_timeout))
+
         try:
-            final_obs = await asyncio.wait_for(rollout_task, timeout=config.timeout)
+            _ = await asyncio.wait_for(rollout_task, timeout=config.timeout)
         except asyncio.TimeoutError:
             if config.verbose:
                 logger.error(f"Process {os.getpid()}: Rollout timed out for task {task.id}")
@@ -124,15 +109,16 @@ async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | Tra
             try:
                 await asyncio.wait_for(rollout_task, timeout=5.0)
             except (asyncio.TimeoutError, asyncio.CancelledError):
-                logger.warning(f"Process {os.getpid()}: Task cancellation did not complete in 5s for {task.id}, abandoning")
+                logger.warning(
+                    f"Process {os.getpid()}: Task cancellation did not complete in 5s for {task.id}, abandoning"
+                )
             raise
-        
+
         if config.return_dict:
             return current_trajectory_collection.get().to_dict()
         else:
             return current_trajectory_collection.get()
-        
-       
+
     except Exception as e:
         if config.verbose:
             print(f"Error running rollout for task {task.id}: {e}")

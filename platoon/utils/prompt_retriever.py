@@ -75,13 +75,9 @@ class PromptRetriever:
         """
         if template_name not in self._template_cache:
             try:
-                self._template_cache[template_name] = self.env.get_template(
-                    f"{template_name}.jinja"
-                )
+                self._template_cache[template_name] = self.env.get_template(f"{template_name}.jinja")
             except TemplateNotFound:
-                raise TemplateNotFound(
-                    f"Template '{template_name}' not found in {self.prompts_dir}"
-                )
+                raise TemplateNotFound(f"Template '{template_name}' not found in {self.prompts_dir}")
 
         return self._template_cache[template_name]
 

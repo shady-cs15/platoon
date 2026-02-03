@@ -12,11 +12,10 @@ from pathlib import Path
 
 from datasets import Dataset
 
-
-from platoon.number_search.tasks import get_task_ids, get_task
 from platoon.number_search.rollout import run_rollout
-from platoon.train.tinker.rl import PlatoonTinkerRLTrainer
+from platoon.number_search.tasks import get_task, get_task_ids
 from platoon.train.tinker.config_defs import PlatoonTinkerRLTrainerConfig
+from platoon.train.tinker.rl import PlatoonTinkerRLTrainer
 from platoon.train.tinker.workflows import GroupRolloutWorkflow
 from platoon.utils.config import load_config
 
@@ -37,22 +36,18 @@ async def main(args: list[str]):
         config_class=PlatoonTinkerRLTrainerConfig,
         default_config_path=str(default_config),
     )
-    
+
     # Create datasets
-    train_dataset = Dataset.from_list([
-        {"task_id": x} for x in get_task_ids("train", 1000)
-    ])
-    eval_dataset = Dataset.from_list([
-        {"task_id": x} for x in get_task_ids("val", 100)
-    ])
-    
+    train_dataset = Dataset.from_list([{"task_id": x} for x in get_task_ids("train", 1000)])
+    eval_dataset = Dataset.from_list([{"task_id": x} for x in get_task_ids("val", 100)])
+
     # Create trainer and run with context manager for proper cleanup
     trainer = PlatoonTinkerRLTrainer(
         config=config,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
-    
+
     async with trainer:
         # Create workflows - use trainer.run_log_path for run-specific output
         train_workflow = GroupRolloutWorkflow(
@@ -64,7 +59,7 @@ async def main(args: list[str]):
             stats_scope="train",
             filter_errors=False,
         )
-        
+
         eval_workflow = GroupRolloutWorkflow(
             rollout_fn=run_rollout,
             get_task_fn=get_task,
@@ -74,7 +69,7 @@ async def main(args: list[str]):
             stats_scope="eval",
             filter_errors=False,
         )
-        
+
         # Run training
         await trainer.train(
             train_workflow=train_workflow,
@@ -84,4 +79,3 @@ async def main(args: list[str]):
 
 if __name__ == "__main__":
     asyncio.run(main(sys.argv[1:]))
-

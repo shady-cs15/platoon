@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from platoon.agents.base import Agent
     from platoon.envs.base import Env
-    from platoon.episode.trajectory import Trajectory, TrajectoryCollection, BudgetTracker
+    from platoon.episode.trajectory import BudgetTracker, Trajectory, TrajectoryCollection
 
 current_agent: ContextVar["Agent"] = ContextVar("current_agent")
 current_env: ContextVar["Env"] = ContextVar("current_env")

@@ -13,4 +13,4 @@ Each backend provides:
 # Re-export common configurations for convenience
 from platoon.config_defs import RolloutConfig
 
-__all__ = ['RolloutConfig']
+__all__ = ["RolloutConfig"]

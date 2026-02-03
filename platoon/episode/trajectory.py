@@ -1,22 +1,28 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from typing import Any, Protocol, runtime_checkable, Iterable
 import uuid
 from collections import defaultdict
+from dataclasses import asdict, dataclass, field
+from typing import Any, Iterable, Protocol, runtime_checkable
 
-from platoon.episode.context import finish_message
 from platoon.envs.base import Task
-from platoon.episode.context import current_trajectory, current_trajectory_collection
+from platoon.episode.context import (
+    current_trajectory,
+    current_trajectory_collection,
+    finish_message,
+)
+
 
 @dataclass
 class TrajectoryStep:
     misc: dict[str, Any] = field(default_factory=dict)
 
+
 @dataclass
 class ParentInfo:
     id: str
     fork_step: int
+
 
 @dataclass
 class Trajectory:
@@ -28,20 +34,21 @@ class Trajectory:
     finish_message: str | None = None
     error_message: str | None = None
     misc: dict[str, Any] = field(default_factory=dict)
-    
+
     def add_step(self, step: TrajectoryStep) -> None:
         self.steps.append(step)
         if finish_message.get(None) is not None:
             self.finish_message = finish_message.get()
-        if hasattr(step, "reward"):
-            self.reward += step.reward
+        reward = getattr(step, "reward", None)
+        if reward is not None:
+            self.reward += reward
+
 
 @runtime_checkable
 class TrajectoryEventHandler(Protocol):
-
     def on_trajectory_created(self, trajectory: Trajectory) -> None:
         pass
-    
+
     def on_trajectory_step_added(self, trajectory: Trajectory, step: TrajectoryStep) -> None:
         pass
 
@@ -62,7 +69,7 @@ class TrajectoryCollection:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     trajectories: dict[str, Trajectory] = field(default_factory=dict)
     event_handlers: list[TrajectoryEventHandler] = field(default_factory=list)
-    
+
     def __post_init__(self):
         event_handlers = self.event_handlers
         self.event_handlers = []
@@ -72,8 +79,10 @@ class TrajectoryCollection:
     @property
     def step_count(self) -> int:
         return self._step_count
-    
-    def register_event_handlers(self, event_handlers: TrajectoryEventHandler | Iterable[TrajectoryEventHandler]) -> None:
+
+    def register_event_handlers(
+        self, event_handlers: TrajectoryEventHandler | Iterable[TrajectoryEventHandler]
+    ) -> None:
         if isinstance(event_handlers, Iterable) and not isinstance(event_handlers, (str, bytes)):
             for h in event_handlers:
                 if isinstance(h, TrajectoryEventHandler):
@@ -84,14 +93,17 @@ class TrajectoryCollection:
             self.event_handlers.append(event_handlers)
         else:
             raise ValueError(f"Handler {event_handlers} is not a TrajectoryEventHandler")
-        
-    def create_trajectory(self, parent_traj: Trajectory | None=None) -> Trajectory:
-        
-        parent_info = ParentInfo(
-            id=parent_traj.id, 
-            fork_step=len(parent_traj.steps), 
-        ) if parent_traj is not None else None
-        
+
+    def create_trajectory(self, parent_traj: Trajectory | None = None) -> Trajectory:
+        parent_info = (
+            ParentInfo(
+                id=parent_traj.id,
+                fork_step=len(parent_traj.steps),
+            )
+            if parent_traj is not None
+            else None
+        )
+
         trajectory = Trajectory(id=str(uuid.uuid4()), parent_info=parent_info)
         self.trajectories[trajectory.id] = trajectory
         for handler in self.event_handlers:
@@ -122,12 +134,8 @@ class TrajectoryCollection:
                 print(f"Error in on_trajectory_task_set for trajectory {trajectory_id}: {str(e)}")
                 pass
 
-    def finish_trajectory(
-        self,
-        trajectory_id: str
-    ) -> None:
-        """Mark a trajectory as finished and notify handlers.
-        """
+    def finish_trajectory(self, trajectory_id: str) -> None:
+        """Mark a trajectory as finished and notify handlers."""
         trajectory = self.trajectories[trajectory_id]
         for handler in self.event_handlers:
             try:
@@ -142,46 +150,35 @@ class TrajectoryCollection:
 
         Avoids dataclasses.asdict to skip non-serializable fields (handlers).
         """
-        return {
-            "id": self.id,
-            "trajectories": {
-                traj_id: asdict(traj)
-                for traj_id, traj in self.trajectories.items()
-            }
-        }
+        return {"id": self.id, "trajectories": {traj_id: asdict(traj) for traj_id, traj in self.trajectories.items()}}
+
 
 # TODO: This is minimal for now on purpose, to better understand needs.
-# We can consider expanding the protocol later to add more informative methods for the user to query about the budget. 
+# We can consider expanding the protocol later to add more informative methods for the user to query about the budget.
 @runtime_checkable
 class BudgetTracker(Protocol):
+    def reserve_budget(self, requested_budget: float, raise_on_failure: bool = False) -> bool: ...
 
-    def reserve_budget(self, requested_budget: float, raise_on_failure: bool = False) -> bool:
-        ...
-
-    def release_budget(self, amount_to_release: float) -> None:
-        ...
+    def release_budget(self, amount_to_release: float) -> None: ...
 
     def remaining_budget(self) -> float:
         return self.remaining_budget_for(current_trajectory.get().id)
 
-    def remaining_budget_for(self, trajectory_id: str) -> float:
-        ...
+    def remaining_budget_for(self, trajectory_id: str) -> float: ...
 
     def used_budget(self) -> float:
         return self.used_budget_for(current_trajectory.get().id)
 
-    def used_budget_for(self, trajectory_id: str) -> float:
-        ...
+    def used_budget_for(self, trajectory_id: str) -> float: ...
+
 
 @dataclass
 class StepBudgetTracker(BudgetTracker):
-    reserved_trajectory_budgets: defaultdict[str, float] = field(
-        default_factory=lambda: defaultdict(float)
-    )
+    reserved_trajectory_budgets: defaultdict[str, float] = field(default_factory=lambda: defaultdict(float))
 
     def _allocated_budget(self, trajectory_id: str) -> float:
         traj = current_trajectory_collection.get().trajectories[trajectory_id]
-        return traj.task.max_steps or float('inf')
+        return traj.task.max_steps or float("inf")
 
     # TODO: This is inefficient, we might just want to store the child map as we build the tree.
     def _iter_descendant_trajectory_ids(self, trajectory_id: str) -> Iterable[str]:
@@ -219,7 +216,7 @@ class StepBudgetTracker(BudgetTracker):
             - self._reserved_budget(trajectory_id)
         )
         return remaining
-   
+
     def reserve_budget(self, requested_budget: float, raise_on_failure: bool = False) -> bool:
         curr_traj_id = current_trajectory.get().id
         if self.remaining_budget() < requested_budget:
@@ -230,7 +227,7 @@ class StepBudgetTracker(BudgetTracker):
             return False
         self.reserved_trajectory_budgets[curr_traj_id] += requested_budget
         return True
-    
+
     def release_budget(self, amount_to_release: float) -> None:
         curr_traj_id = current_trajectory.get().id
         self.reserved_trajectory_budgets[curr_traj_id] -= amount_to_release

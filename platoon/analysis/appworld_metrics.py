@@ -22,6 +22,7 @@ def _try_import_load_task_ids():
     _ensure_appworld_root()
     try:
         from appworld import load_task_ids  # type: ignore
+
         return load_task_ids
     except Exception as e:
         raise RuntimeError(
@@ -111,6 +112,7 @@ def num_steps_for_collection(dump_obj: dict) -> int:
                 total_steps += len(steps)
     return total_steps
 
+
 def discover_input_paths(dir_arg: str | None, path_args: List[str]) -> List[Path]:
     paths: List[Path] = []
     if dir_arg:
@@ -143,9 +145,9 @@ def main() -> None:
         default="1,2,3",
         help="Comma-separated difficulties to evaluate (1=easy,2=medium,3=hard)",
     )
-    parser.add_argument("--denom1", type=int, default=None, help="Override denominator for difficulty 1 (easy)")
-    parser.add_argument("--denom2", type=int, default=None, help="Override denominator for difficulty 2 (medium)")
-    parser.add_argument("--denom3", type=int, default=None, help="Override denominator for difficulty 3 (hard)")
+    parser.add_argument("--denom1", type=int, default=None, help="Override denominator for easy")
+    parser.add_argument("--denom2", type=int, default=None, help="Override denominator for medium")
+    parser.add_argument("--denom3", type=int, default=None, help="Override denominator for hard")
 
     args = parser.parse_args()
 
@@ -197,7 +199,9 @@ def main() -> None:
         # Try exact match first, then match by base prefix before underscore
         matched_diff: Optional[int] = None
         for d in diffs:
-            if task_id in diff_to_tasks.get(d, set()) or task_id.split("_")[0] in diff_to_tasks_base.get(d, set()):
+            in_full = task_id in diff_to_tasks.get(d, set())
+            in_base = task_id.split("_")[0] in diff_to_tasks_base.get(d, set())
+            if in_full or in_base:
                 matched_diff = d
                 break
         if matched_diff is None:
@@ -226,10 +230,7 @@ def main() -> None:
     # Also provide overall on the evaluated difficulties
     total_all = sum(totals.values())
     success_all = sum(successes.values())
-    denom_all = sum(
-        ( {1: args.denom1, 2: args.denom2, 3: args.denom3}.get(d) or totals[d] )
-        for d in diffs
-    )
+    denom_all = sum(({1: args.denom1, 2: args.denom2, 3: args.denom3}.get(d) or totals[d]) for d in diffs)
     acc_all = (success_all / denom_all) if denom_all > 0 else 0.0
     total_steps_all = sum(steps_totals.values())
     avg_steps_all = (total_steps_all / total_all) if total_all > 0 else 0.0
@@ -247,5 +248,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

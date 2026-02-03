@@ -1,23 +1,28 @@
 from __future__ import annotations
 
 import os
-from typing import Any, cast, TypeAlias, TypedDict
+from typing import Any, TypeAlias, TypedDict, cast
 
 import litellm
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+
 
 class ChatMessage(TypedDict):
     role: str
     content: str
 
+
 Conversation: TypeAlias = list[ChatMessage]
+
 
 class ConversationWithMetadata(TypedDict):
     messages: list[ChatMessage]
     misc: dict[str, Any]
 
+
 """LLM client utility for making calls to LLMs compatible with the OpenAI's API."""
+
 
 # TODO: Add retry logic. Consider also adding backup endpoint support.
 # TODO: Make this a protocol?
@@ -44,15 +49,13 @@ class LLMClient:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError(
-                "LLM API key is required. Set OPENAI_API_KEY environment variable or pass "
-                "api_key parameter."
+                "LLM API key is required. Set OPENAI_API_KEY environment variable or pass api_key parameter."
             )
 
         self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
         if not self.base_url:
             raise ValueError(
-                "LLM base URL is required. Set OPENAI_BASE_URL environment variable or pass "
-                "base_url parameter."
+                "LLM base URL is required. Set OPENAI_BASE_URL environment variable or pass base_url parameter."
             )
 
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
@@ -88,7 +91,6 @@ class LLMClient:
                 if isinstance(message["content"], str):
                     message["content"] = [{"type": "text", "text": message["content"]}]
             messages[-1]["content"][-1]["cache_control"] = {"type": "ephemeral"}
-
 
         try:
             response: ChatCompletion = self.client.chat.completions.create(
@@ -178,7 +180,12 @@ class LLMClient:
         return self.chat_completion(messages, temperature, max_tokens, **kwargs)
 
     async def async_simple_completion(
-        self, prompt: str, temperature: float = 0.7, max_tokens: int | None = None, auto_add_cache_control: bool = False, **kwargs: Any
+        self,
+        prompt: str,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        auto_add_cache_control: bool = False,
+        **kwargs: Any,
     ) -> str:
         """Make an async simple completion request with a single user message.
 
@@ -261,10 +268,11 @@ class LLMClient:
     async def aclose(self) -> None:
         """Close the async client connection."""
         await self.async_client.close()
-        
-    def fork(self) -> LLMClient:
-        return LLMClient(api_key=self.api_key, model=self.model, base_url=self.base_url, default_extra_body=self.default_extra_body)
 
+    def fork(self) -> LLMClient:
+        return LLMClient(
+            api_key=self.api_key, model=self.model, base_url=self.base_url, default_extra_body=self.default_extra_body
+        )
 
 
 def create_llm_client(
@@ -288,7 +296,7 @@ def create_llm_client(
 
 class LiteLLMClient:
     """Client for making LLM calls through LiteLLM.
-    
+
     This client routes calls through LiteLLM, enabling use of custom providers
     like the Tinker proxy. Use this instead of LLMClient when you need to use
     custom LiteLLM providers.

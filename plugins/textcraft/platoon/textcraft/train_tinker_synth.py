@@ -14,10 +14,15 @@ from pathlib import Path
 
 from datasets import Dataset
 
-from platoon.textcraft.synth_tasks import get_synth_task_ids, get_synth_task
-from platoon.textcraft.synth_rollout import run_synth_rollout, run_synth_recursive_rollout
-from platoon.train.tinker.rl import PlatoonTinkerRLTrainer
+from platoon.textcraft.synth_rollout import run_synth_rollout
+from platoon.textcraft.synth_tasks import (
+    Difficulty,
+    get_synth_task,
+    get_synth_task_ids,
+    get_synth_task_ids_by_difficulty,
+)
 from platoon.train.tinker.config_defs import PlatoonTinkerRLTrainerConfig
+from platoon.train.tinker.rl import PlatoonTinkerRLTrainer
 from platoon.train.tinker.workflows import GroupRolloutWorkflow
 from platoon.utils.config import load_config
 
@@ -34,15 +39,51 @@ logger = logging.getLogger("platoon.textcraft.train_synth")
 def reward_processor(traj: dict) -> tuple[float, dict]:
     """Process trajectory rewards, extracting individual reward components."""
     rewards_dict = {}
-    for step in traj['steps']:
-        reward_misc = step.get('misc', {}).get('reward_misc', {})
+    for step in traj["steps"]:
+        reward_misc = step.get("misc", {}).get("reward_misc", {})
         for reward_key, reward_value in reward_misc.items():
-            if reward_key.startswith('reward/'):
+            if reward_key.startswith("reward/"):
                 if reward_key not in rewards_dict:
                     rewards_dict[reward_key] = 0.0
                 rewards_dict[reward_key] += reward_value
     score = sum(rewards_dict.values())
     return score, rewards_dict
+
+
+def get_filtered_task_ids(
+    split: str,
+    difficulties: list[str] | None,
+    num_samples_train: int = 10000,
+    num_samples_val: int = 1000,
+) -> list[str]:
+    """Get task IDs, optionally filtered by difficulty levels.
+
+    Args:
+        split: "train" or "val"
+        difficulties: List of difficulty names to include (e.g., ["easy", "medium"]).
+                     If None or empty, returns all tasks.
+        num_samples_train: Total number of training samples in the dataset
+        num_samples_val: Total number of validation samples in the dataset
+
+    Returns:
+        List of task IDs matching the specified difficulties
+    """
+    if not difficulties:
+        return get_synth_task_ids(split, num_samples_train, num_samples_val)
+
+    # Collect task IDs for each requested difficulty
+    all_ids = []
+    for diff_name in difficulties:
+        try:
+            diff = Difficulty(diff_name.lower())
+        except ValueError:
+            valid = [d.value for d in Difficulty]
+            raise ValueError(f"Invalid difficulty '{diff_name}'. Valid options: {valid}")
+
+        ids = get_synth_task_ids_by_difficulty(split, diff, num_samples_train, num_samples_val)
+        all_ids.extend(ids)
+
+    return all_ids
 
 
 async def main(args: list[str]):
@@ -54,11 +95,20 @@ async def main(args: list[str]):
         default_config_path=str(default_config),
     )
 
-    # Create datasets
-    # Train: use all 10000 samples
-    # Eval: use first 100 of 1000 for faster validation
-    train_task_ids = get_synth_task_ids("train", num_samples_train=10000, num_samples_val=1000)
-    eval_task_ids = get_synth_task_ids("val", num_samples_train=10000, num_samples_val=1000)[:100]
+    # Get difficulty filter from config (if specified)
+    # Can be set via CLI: train_difficulties='["easy","medium"]'
+    train_difficulties = ["medium"]  # raw_config.get("train_difficulties", None)
+    eval_difficulties = None  # raw_config.get("eval_difficulties", None)
+
+    # Create datasets with optional difficulty filtering
+    # Create datasets with optional difficulty filtering
+    train_task_ids = get_filtered_task_ids("train", train_difficulties, num_samples_train=2522)
+    eval_task_ids = get_filtered_task_ids("val", eval_difficulties, num_samples_val=632)[:100]
+
+    if train_difficulties:
+        logger.info(f"Filtering train tasks to difficulties: {train_difficulties}")
+    if eval_difficulties:
+        logger.info(f"Filtering eval tasks to difficulties: {eval_difficulties}")
 
     train_dataset = Dataset.from_list([{"task_id": x} for x in train_task_ids])
     eval_dataset = Dataset.from_list([{"task_id": x} for x in eval_task_ids])
@@ -76,7 +126,7 @@ async def main(args: list[str]):
     async with trainer:
         # Create workflows
         train_workflow = GroupRolloutWorkflow(
-            rollout_fn=run_synth_recursive_rollout,
+            rollout_fn=run_synth_rollout,
             get_task_fn=get_synth_task,
             config=config.train.workflow_config,
             model_info=trainer.model_info,
@@ -87,7 +137,7 @@ async def main(args: list[str]):
         )
 
         eval_workflow = GroupRolloutWorkflow(
-            rollout_fn=run_synth_recursive_rollout,
+            rollout_fn=run_synth_rollout,
             get_task_fn=get_synth_task,
             config=config.eval.workflow_config,
             model_info=trainer.model_info,

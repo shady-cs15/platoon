@@ -5,11 +5,11 @@
 train:
   model_name: Qwen/Qwen3-4B-Instruct-2507
   renderer_name: qwen3_instruct
-  batch_size: 32
+  batch_size: 16
   num_epochs: 30
   max_training_steps: 100
   num_minibatches: 1
-  num_microbatches: 1
+  num_microbatches: 2
   max_staleness: 3
   lora_rank: 32
   loss_fn: cispo
@@ -25,42 +25,49 @@ train:
   workflow_config:
     group_size: 8
     rollout_config:
-      max_steps: 75  # Fixed budget for all synth tasks
+      max_steps: 200  # Fixed budget for all synth tasks
       output_dir: ./rollout_results
       verbose: true
-      timeout: 1500  # Higher timeout for deeper tasks
-  num_concurrent_rollout_workflow_workers: 32
+      timeout: 7200  # 2 hours - trajectory timeout
+      step_timeout: 1500  # 25 min - per-step timeout
+  num_concurrent_rollout_workflow_workers: 16
+  context_window_length: 8192
 
 # Eval configuration
 eval:
   strategy: step
-  every: 20
+  every: 5
   num_concurrent_rollout_workflow_workers: 32
   workflow_config:
     group_size: 1
     rollout_config:
-      max_steps: 75  # Fixed budget for all synth tasks
+      max_steps: 200  # Fixed budget for all synth tasks
       output_dir: ./eval_results
       verbose: false
-      timeout: 1500
+      timeout: 7200  # 2 hours - trajectory timeout
+      step_timeout: 1500  # 25 min - per-step timeout
 
 # Checkpoint configuration
 checkpoint:
   strategy: step
-  every: 5
-  load_checkpoint_path: null
+  every: 1
+  load_checkpoint_path: null #tinker://45e5a6d8-b2bd-54a4-9dff-d3cdad02ef77:train:0/weights/000055 #tinker://93771e90-9aff-53c9-823d-440eb236b416:train:0/weights/000030 # #null
 
 # Logging
-log_path: /data/user_data/apurvag/platoon/runs/logs
+log_path: ./logs/runs
 tinker_base_url: null
+
+# Watchdog configuration
+watchdog:
+  timeout_seconds: 7200  # 2 hours
 
 # Stats and WandB configuration
 stats:
-  experiment_name: textcraft-synth-platoon-tinker
-  trial_name: synth-grpo-4b-recursive-trial-2
+  experiment_name: recursive-agents #textcraft-synth-platoon-tinker
+  trial_name: textcraft-synth-single-target-ctx8192-cispo-4b-linear-medium-trial-0 #textcraft-synth-grpo-4b-linear-curriculum-medium-trial-0 #synth-grpo-4b-recursive-trial-2
   wandb:
     mode: online
-    project: textcraft-synth-platoon-tinker
+    project: recursive-agents #textcraft-synth-platoon-tinker
     entity: null
     tags:
       - textcraft-synth

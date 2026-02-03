@@ -1,24 +1,31 @@
 from __future__ import annotations
 
 import os
-import sys
 import subprocess
+import sys
 from typing import Dict, List, Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
+
 try:
     from textual.containers import HorizontalScroll  # type: ignore
 except Exception:
     HorizontalScroll = VerticalScroll  # type: ignore
-from textual.widgets import DataTable, Footer, Header, Static
-from textual.timer import Timer
 from rich.markdown import Markdown
-from textual.events import MouseDown, MouseMove, MouseUp
 from rich.text import Text
+from textual.events import MouseDown, MouseMove, MouseUp
+from textual.timer import Timer
+from textual.widgets import DataTable, Footer, Header, Static
 
-from platoon.analysis.error_analysis import ErrorIssue, ErrorClusters, llm_cluster_issue_analyses, get_cached_error_explanation, _issue_key
+from platoon.analysis.error_analysis import (
+    ErrorClusters,
+    ErrorIssue,
+    _issue_key,
+    get_cached_error_explanation,
+    llm_cluster_issue_analyses,
+)
 
 
 class ErrorDetails(Static):
@@ -58,7 +65,9 @@ class ErrorApp(App):
         Binding("L", "cluster_analyses", "Cluster Analyses"),
     ]
 
-    def __init__(self, issues: List[ErrorIssue], clusters: ErrorClusters, *, analysis_cache_dir: Optional[str] = None) -> None:
+    def __init__(
+        self, issues: List[ErrorIssue], clusters: ErrorClusters, *, analysis_cache_dir: Optional[str] = None
+    ) -> None:
         super().__init__()
         self.issues = issues
         self.clusters = clusters
@@ -83,7 +92,7 @@ class ErrorApp(App):
         with row:
             self._left_container = HorizontalScroll(id="left_pane")
             try:
-                self._left_container.styles.width = f"60%"
+                self._left_container.styles.width = "60%"
                 self._left_container.styles.min_width = 30
             except Exception:
                 pass
@@ -154,6 +163,7 @@ class ErrorApp(App):
         if not self.group_by_clusters:
             # Group by task id
             from collections import defaultdict
+
             task_to_issues: Dict[str, List[ErrorIssue]] = defaultdict(list)
             for it in self.issues:
                 task_to_issues[it.task_id].append(it)
@@ -285,7 +295,9 @@ class ErrorApp(App):
             pass
 
 
-def run_error_ui(issues: List[ErrorIssue], clusters: ErrorClusters, *, analysis_cache_dir: Optional[str] = None) -> None:
+def run_error_ui(
+    issues: List[ErrorIssue], clusters: ErrorClusters, *, analysis_cache_dir: Optional[str] = None
+) -> None:
     app = ErrorApp(issues, clusters, analysis_cache_dir=analysis_cache_dir)
     app.run()
 
@@ -349,4 +361,3 @@ class SplitDivider(Static):
             event.stop()
         except Exception:
             pass
-

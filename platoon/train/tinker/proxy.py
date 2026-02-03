@@ -4,30 +4,41 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Callable, Dict, List, Literal, Optional, Type, TypeGuard, TypeVar, cast, get_origin
+from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Type,
+    TypeGuard,
+    TypeVar,
+    cast,
+    get_origin,
+)
 
 import litellm
 import tinker
 from litellm.llms.custom_llm import CustomLLM
-from litellm.types.utils import ChatCompletionMessageToolCall, ChatCompletionTokenLogprob
+from litellm.types.utils import (
+    ChatCompletionMessageToolCall,
+    ChatCompletionTokenLogprob,
+    Choices,
+    ModelResponse,
+)
 from litellm.types.utils import ChoiceLogprobs as LitellmChoiceLogprobs
-from litellm.types.utils import Choices
 from litellm.types.utils import Message as LitellmMessage
-from litellm.types.utils import ModelResponse
 from litellm.types.utils import TopLogprob as LitellmTopLogprob
 from litellm.utils import custom_llm_setup
-from pydantic import TypeAdapter
 from tinker.types import ModelInput, SampleResponse, SamplingParams
 from tinker_cookbook.completers import TokensWithLogprobs
 from tinker_cookbook.renderers import Message as TinkerMessage
-from tinker_cookbook.renderers import Renderer
+from tinker_cookbook.renderers import Renderer, get_renderer
 from tinker_cookbook.renderers import ToolCall as TinkerToolCall
-from tinker_cookbook.renderers import get_renderer
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 from transformers import PreTrainedTokenizer
-from dataclasses import dataclass
-from contextvars import ContextVar
-
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +50,13 @@ class TinkerLLMInteraction:
     obs: tinker.ModelInput
     action: TokensWithLogprobs
 
+
 proxy_interactions: ContextVar[dict[str, TinkerLLMInteraction]] = ContextVar("proxy_interactions")
 
 
 class TinkerLLMProxySession:
     _token: object | None = None
-    
+
     def __enter__(self) -> TinkerLLMProxySession:
         self._token = proxy_interactions.set({})
         return self
@@ -99,11 +111,12 @@ class TinkerLLM(CustomLLM):
         renderer: Renderer,
         tokenizer: PreTrainedTokenizer,
         sampling_client: tinker.SamplingClient,
-        max_tokens: int = 128000,
+        max_tokens: int = 4096,
         temperature: float = 1.0,
         top_k: int = -1,
         top_p: float = 1.0,
         seed: int = 42,
+        context_window_length: int | None = None,
     ) -> None:
         """Initialize the TinkerLLM."""
         self.model_name = model_name
@@ -115,6 +128,7 @@ class TinkerLLM(CustomLLM):
         self.top_k = top_k
         self.top_p = top_p
         self.seed = seed
+        self.context_window_length = context_window_length
         self._version: int = 0
 
     @property
@@ -124,7 +138,7 @@ class TinkerLLM(CustomLLM):
 
     def set_version(self, version: int) -> None:
         """Set the checkpoint version.
-        
+
         Args:
             version: The version number to set.
         """
@@ -132,7 +146,7 @@ class TinkerLLM(CustomLLM):
 
     def increment_version(self) -> int:
         """Increment and return the checkpoint version.
-        
+
         Returns:
             The new version number after incrementing.
         """
@@ -153,7 +167,7 @@ class TinkerLLM(CustomLLM):
     def _canonicalize_messages(self, messages: Any) -> List[TinkerMessage]:
         # Note: We avoid using TypeAdapter for strict validation because TinkerMessage
         # contains ImagePart which has PIL.Image.Image that Pydantic can't handle.
-        # Instead, we cast directly since we expect the messages to already be in 
+        # Instead, we cast directly since we expect the messages to already be in
         # the correct format (coming from LiteLLM or manually constructed).
         if not isinstance(messages, list):
             raise ValueError(f"Expected list of messages, got {type(messages)}")
@@ -228,7 +242,7 @@ class TinkerLLM(CustomLLM):
                             token=token,
                             bytes=bytes,
                             logprob=logprob,
-                            # NOTE: This top logprob is not the real top logprob. It's just used to fool the LiteLLM type validator.
+                            # NOTE: This top logprob is fake. It's just used to fool the LiteLLM type validator.
                             top_logprobs=[LitellmTopLogprob(token=token, bytes=bytes, logprob=logprob)],
                         )
                         for token, bytes, logprob in zip(token_strings, bytes_list, seq.logprobs)
@@ -263,7 +277,7 @@ class TinkerLLM(CustomLLM):
                     )
                 )
             else:
-                #logger.warning(f"Failed to parse response: {parsed_response}")
+                # logger.warning(f"Failed to parse response: {parsed_response}")
                 # Go with the default path
                 choices.append(
                     Choices(
@@ -280,19 +294,31 @@ class TinkerLLM(CustomLLM):
     def _record_interaction(self, model_input: ModelInput, model_response: ModelResponse) -> None:
         assert len(model_response.choices) == 1
 
+        logprobs_content = model_response.choices[0].logprobs.content
         interaction = TinkerLLMInteraction(
             obs=model_input,
             action=TokensWithLogprobs(
                 tokens=model_response.choices[0].token_ids,
-                maybe_logprobs=[c.logprob for c in model_response.choices[0].logprobs.content],
+                maybe_logprobs=[c.logprob for c in logprobs_content] if logprobs_content else [],
             ),
         )
         proxy_interactions.get()[model_response.id] = interaction
 
+    def _check_context_window_length(self, model_input: ModelInput, max_completion_tokens: int) -> None:
+        prompt_length = model_input.length
+        total_sequence_length = prompt_length + max_completion_tokens
+        if total_sequence_length > self.context_window_length and self.context_window_length is not None:
+            raise ValueError(
+                f"Prompt length plus max_tokens exceeds the model's context window: "
+                f"{prompt_length} prompt tokens + {max_completion_tokens} max_tokens > "
+                f"{self.context_window_length} context window length."
+            )
+
     async def acompletion(self, **kwargs: Any) -> ModelResponse:  # type: ignore
         """Main entrypoint for LiteLLM to call."""
-        import time
         import asyncio
+        import time
+
         max_tokens = self._get_optional_params(
             kwargs, ["max_completion_tokens", "max_tokens"], int, lambda x: x >= 0, self.max_tokens
         )
@@ -302,8 +328,11 @@ class TinkerLLM(CustomLLM):
         top_k = self._get_optional_params(kwargs, ["top_k"], int, lambda x: True, self.top_k)
         top_p = self._get_optional_params(kwargs, ["top_p"], float, lambda x: 0.0 <= x <= 1.0, self.top_p)
         seed = self._get_optional_params(kwargs, ["seed"], int, lambda _: True, self.seed)
-        stop_sequences = self._get_optional_params(kwargs, ["stop"], list, lambda x: True, self.renderer.get_stop_sequences())
+        stop_sequences = self._get_optional_params(
+            kwargs, ["stop"], list, lambda x: True, self.renderer.get_stop_sequences()
+        )
         model_input = self._prepare_model_input(**kwargs)
+        self._check_context_window_length(model_input, max_tokens)
         params = SamplingParams(
             max_tokens=max_tokens,
             temperature=temperature,
@@ -313,7 +342,7 @@ class TinkerLLM(CustomLLM):
             stop=stop_sequences,
         )
         start_time = time.perf_counter()
-        
+
         # Timeout for sample_async to prevent infinite hangs (10 minutes)
         SAMPLE_TIMEOUT_SECONDS = 600
         try:
@@ -347,8 +376,11 @@ class TinkerLLM(CustomLLM):
         top_k = self._get_optional_params(kwargs, ["top_k"], int, lambda x: True, self.top_k)
         top_p = self._get_optional_params(kwargs, ["top_p"], float, lambda x: 0.0 <= x <= 1.0, self.top_p)
         seed = self._get_optional_params(kwargs, ["seed"], int, lambda _: True, self.seed)
-        stop_sequences = self._get_optional_params(kwargs, ["stop"], list, lambda x: True, self.renderer.get_stop_sequences())
+        stop_sequences = self._get_optional_params(
+            kwargs, ["stop"], list, lambda x: True, self.renderer.get_stop_sequences()
+        )
         model_input = self._prepare_model_input(**kwargs)
+        self._check_context_window_length(model_input, max_tokens)
         params = SamplingParams(
             max_tokens=max_tokens,
             temperature=temperature,
@@ -399,9 +431,11 @@ class ModelInfo:
     base_url: str
     api_key: str
 
+
 def register_tinker_llm(
     model_name: str,
     renderer_name: str,
+    context_window_length: int | None = None,
 ) -> ModelInfo:
     """
     Register the TinkerLLMProxy as a custom provider in LiteLLM.
@@ -409,9 +443,7 @@ def register_tinker_llm(
     Args:
         model_name: HuggingFace model identifier (e.g., "Qwen/Qwen3-30B-A3B-Instruct-2507").
         renderer_name: Renderer type for prompt formatting (e.g., "qwen3", "qwen3_instruct").
-        port: Port to expose the LiteLLM proxy. Defaults to 1899.
-        store: Optional Lightning store for tracking usage. Defaults to None.
-        add_return_token_ids: Whether to add return token ids to the response. Defaults to True.
+        context_window_length: Context window length for the model. Defaults to None.
     """
     service_client = tinker.ServiceClient()
     sampling_client = service_client.create_sampling_client(base_model=model_name)
@@ -422,10 +454,10 @@ def register_tinker_llm(
         sampling_client=sampling_client,
         renderer=get_renderer(renderer_name, tokenizer),
         tokenizer=tokenizer,
+        context_window_length=context_window_length,
     )
     tinker_llm.rewrite_litellm_custom_providers()
-    base_url = 'None'
-    api_key = 'None'
-    model_name = 'platoon-tinker/' + model_name
+    base_url = "None"
+    api_key = "None"
+    model_name = "platoon-tinker/" + model_name
     return ModelInfo(llm=tinker_llm, model_name=model_name, base_url=base_url, api_key=api_key)
-

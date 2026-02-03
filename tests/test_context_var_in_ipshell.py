@@ -1,11 +1,7 @@
-from IPython.terminal.embed import InteractiveShellEmbed
-from platoon.envs.codeact import executor_context
-
-
 import pytest
-import contextvars
+from IPython.terminal.embed import InteractiveShellEmbed
 
-import asyncio
+from platoon.envs.codeact import executor_context
 
 
 def _create_shell():
@@ -22,75 +18,48 @@ def _create_shell():
 
 def test_executor_context_visible_in_shell():
     """Executor context set in Python should be readable inside an IPython shell."""
-    from platoon.envs.codeact import executor_context  # imported here to avoid cross-test state
 
     test_value = {"value": "simple"}
     token = executor_context.set(test_value)
     try:
         shell = _create_shell()
         # Inside the shell, read the value from the context var
-        shell.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "context_value = executor_context.get()"
-        )
+        shell.run_cell("from platoon.envs.codeact import executor_context\ncontext_value = executor_context.get()")
         assert shell.user_ns["context_value"] == test_value
     finally:
         # Restore previous context to avoid leaking state between tests
         executor_context.reset(token)
 
 
-
 def test_executor_context_nested_shells():
     """Context changes should propagate through nested IPython shells."""
-    from platoon.envs.codeact import executor_context  # imported here to avoid cross-test state
 
     outer_value = {"level": "outer"}
     token = executor_context.set(outer_value)
     try:
         # ---- First (outer) shell ----
         shell1 = _create_shell()
-        shell1.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "outer_read = executor_context.get()"
-        )
+        shell1.run_cell("from platoon.envs.codeact import executor_context\nouter_read = executor_context.get()")
         assert shell1.user_ns["outer_read"] == outer_value
 
         # Update the context inside the first shell
-        shell1.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "executor_context.set({'level': 'shell1'})"
-        )
-        shell1.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "shell1_read = executor_context.get()"
-        )
+        shell1.run_cell("from platoon.envs.codeact import executor_context\nexecutor_context.set({'level': 'shell1'})")
+        shell1.run_cell("from platoon.envs.codeact import executor_context\nshell1_read = executor_context.get()")
         assert shell1.user_ns["shell1_read"] == {"level": "shell1"}
 
         # ---- Second (nested) shell ----
         shell2 = _create_shell()
-        shell2.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "nested_initial = executor_context.get()"
-        )
+        shell2.run_cell("from platoon.envs.codeact import executor_context\nnested_initial = executor_context.get()")
         # The nested shell should see the value set by the first shell
         assert shell2.user_ns["nested_initial"] == {"level": "shell1"}
 
         # Update the context again inside the nested shell
-        shell2.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "executor_context.set({'level': 'shell2'})"
-        )
-        shell2.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "nested_updated = executor_context.get()"
-        )
+        shell2.run_cell("from platoon.envs.codeact import executor_context\nexecutor_context.set({'level': 'shell2'})")
+        shell2.run_cell("from platoon.envs.codeact import executor_context\nnested_updated = executor_context.get()")
         assert shell2.user_ns["nested_updated"] == {"level": "shell2"}
 
         # After the nested shell finishes, the first shell should now see the latest value
-        shell1.run_cell(
-            "from platoon.envs.codeact import executor_context\n"
-            "after_nested = executor_context.get()"
-        )
+        shell1.run_cell("from platoon.envs.codeact import executor_context\nafter_nested = executor_context.get()")
         assert shell1.user_ns["after_nested"] == {"level": "shell2"}
     finally:
         # Always restore the original context to avoid leaking state
@@ -99,10 +68,10 @@ def test_executor_context_nested_shells():
 
 # ----- Asynchronous tests -----
 
+
 @pytest.mark.asyncio
 async def test_async_executor_context_visible_in_shell():
     """executor_context must be readable inside a shell via run_cell_async."""
-    from platoon.envs.codeact import executor_context
 
     test_value = {"value": "async"}
     token = executor_context.set(test_value)
@@ -110,8 +79,7 @@ async def test_async_executor_context_visible_in_shell():
         shell = _create_shell()
         # Run cell asynchronously that writes the context value into user_ns
         await shell.run_cell_async(
-            "from platoon.envs.codeact import executor_context\n"
-            "async_value = executor_context.get()"
+            "from platoon.envs.codeact import executor_context\nasync_value = executor_context.get()"
         )
         assert shell.user_ns["async_value"] == test_value
     finally:
@@ -121,7 +89,6 @@ async def test_async_executor_context_visible_in_shell():
 @pytest.mark.asyncio
 async def test_async_executor_context_recursive_shell():
     """An IPython shell that spawns another shell should propagate ContextVar changes."""
-    from platoon.envs.codeact import executor_context
 
     outer_value = {"level": "outer_async"}
     token = executor_context.set(outer_value)
@@ -130,8 +97,7 @@ async def test_async_executor_context_recursive_shell():
 
         # Confirm outer shell sees the initial value
         await shell1.run_cell_async(
-            "from platoon.envs.codeact import executor_context\n"
-            "outer_initial = executor_context.get()"
+            "from platoon.envs.codeact import executor_context\nouter_initial = executor_context.get()"
         )
         assert shell1.user_ns["outer_initial"] == outer_value
 
@@ -143,14 +109,13 @@ async def test_async_executor_context_recursive_shell():
             "inner_shell = InteractiveShellEmbed()\n"
             "inner_shell.banner1 = inner_shell.banner2 = inner_shell.exit_msg = ''\n"
             # inner reads current value
-            "await inner_shell.run_cell_async('from platoon.envs.codeact import executor_context\\ninner_read = executor_context.get()')\n"
+            "await inner_shell.run_cell_async('from platoon.envs.codeact import executor_context\\ninner_read = executor_context.get()')\n"  # noqa: E501
             # inner updates contextvar
-            "await asyncio.create_task(inner_shell.run_cell_async('from platoon.envs.codeact import executor_context\\nexecutor_context.set({\\'level\\': \\'inner_async\\'})\\ncontext_value=executor_context.get()'))\n"
+            "await asyncio.create_task(inner_shell.run_cell_async('from platoon.envs.codeact import executor_context\\nexecutor_context.set({\\'level\\': \\'inner_async\\'})\\ncontext_value=executor_context.get()'))\n"  # noqa: E501
             # inner verifies and outer captures after update
             "outer_during_nested1 = inner_shell.user_ns['inner_read']\n"
             "outer_during_nested2 = inner_shell.user_ns['context_value']\n"
             "outer_after_nested = executor_context.get()\n"
-            
         )
 
         assert shell1.user_ns["outer_during_nested1"] == {"level": "outer_async"}
@@ -159,8 +124,3 @@ async def test_async_executor_context_recursive_shell():
 
     finally:
         executor_context.reset(token)
-
-
-
-
-

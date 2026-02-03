@@ -64,13 +64,7 @@ uv sync  # or: pip install -e .
 
 ## Training a Model with Reinforcement Learning
 
-Platoon supports two training backends with different characteristics:
-
-| Feature | Tinker | AReaL |
-|---------|--------|-------|
-| Installation | pip or uv | uv only |
-| GPU Requirements | Requires Tinker service | Requires CUDA |
-| Distributed Training | Service-based | Multi-node native |
+Platoon supports two training backends: Tinker and AReaL.
 
 ### Training with Tinker
 

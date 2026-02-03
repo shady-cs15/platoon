@@ -1,11 +1,12 @@
 from dataclasses import dataclass, field
 from typing import Any
-from openhands.sdk.event import EventID
-from platoon.envs.base import Observation
+
 from openhands.sdk.conversation.base import ConversationStateProtocol
-from platoon.episode.trajectory import TrajectoryStep
-from openhands.sdk.event.llm_convertible.action import ActionEvent
+from openhands.sdk.event import EventID
 from openhands.sdk.event.base import Event
+from openhands.sdk.event.llm_convertible.action import ActionEvent
+from platoon.envs.base import Observation
+from platoon.episode.trajectory import TrajectoryStep
 
 
 @dataclass
@@ -14,10 +15,12 @@ class OpenHandsObservation(Observation):
     last_step_action_id: EventID | None = None
     last_step_observation_id: EventID | None = None
 
+
 @dataclass
 class OpenHandsAction:
     action_events: list[Event] | None = None
     misc: dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class OpenHandsTrajectoryStep(TrajectoryStep):
