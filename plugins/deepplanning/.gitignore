@@ -1,0 +1,4 @@
+uv.lock
+.venv/
+platoon/deepplanning/shoppingplanning/database/
+platoon/deepplanning/travelplanning/database/

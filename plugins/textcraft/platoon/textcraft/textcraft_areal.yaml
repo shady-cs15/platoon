@@ -10,10 +10,10 @@ tokenizer_path: ${actor.path}
 cluster:
   n_nodes: 1  
   n_gpus_per_node: 8
-  fileroot: /mnt/efs/tmp/areal/experiments
+  fileroot: /tmp/areal/experiments
   name_resolve:
     type: nfs
-    nfs_record_root: /mnt/efs/tmp/areal/name_resolve
+    nfs_record_root: /tmp/areal/name_resolve
 
 allocation_mode: sglang:d6p1t1+d2p1t1
 
@@ -39,7 +39,7 @@ workflow_config:
   rollout_config:
     model_name: ${actor.path}
     max_steps: 50
-    output_dir: /mnt/efs/tmp/areal/experiments/textcraft-cispo-4b-lora-recursive-trial-3
+    output_dir: /tmp/areal/experiments/textcraft-cispo-4b-lora-recursive-trial-3
     verbose: True
     train: true
     timeout: 900
@@ -102,7 +102,7 @@ actor:
     std_level: null
   max_new_tokens: ${gconfig.max_new_tokens}
   # lora
-  use_lora: true
+  use_lora: false
   peft_type: lora
   lora_rank: 32
   lora_alpha: 16
