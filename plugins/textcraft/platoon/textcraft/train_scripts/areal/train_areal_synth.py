@@ -19,18 +19,21 @@ logging.basicConfig(level=logging.WARNING)  # Quiet by default
 logging.getLogger("platoon.train.areal.workflows").setLevel(logging.DEBUG)
 logging.getLogger("httpx").setLevel(logging.WARNING)  # Silence httpx spam
 
-from platoon.textcraft.synth_rollout import run_synth_rollout  # noqa: E402
+from platoon.textcraft.synth_rollout import run_synth_rollout, run_synth_recursive_rollout  # noqa: E402
 from platoon.textcraft.synth_tasks import (  # noqa: E402
     Difficulty,
     get_synth_task,
     get_synth_task_ids,
     get_synth_task_ids_by_difficulty,
 )
+from dataclasses import dataclass
+
 from platoon.train.areal import PlatoonArealRLTrainer, PlatoonArealRLTrainerConfig  # noqa: E402
 from platoon.train.areal.workflows import StepWiseArealWorkflow  # noqa: E402
 
 logger = logging.getLogger("platoon.textcraft.train_areal_synth")
 
+@dataclass
 class TextCraftSynthArealTrainerConfig(PlatoonArealRLTrainerConfig):
     train_difficulties: list[str] | None = None
     eval_difficulties: list[str] | None = None
