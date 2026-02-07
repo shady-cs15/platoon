@@ -3,7 +3,7 @@ from __future__ import annotations
 from platoon.agents.codeact import CodeActPromptBuilder, PromptMode
 from platoon.envs.codeact import CodeActObservation
 
-import platoon.deepplanning.shoppingplanning.agent.prompts as prompt_lib
+import platoon.deepplanning.shoppingplanning.agent_lib.prompts as prompt_lib
 
 
 class ShoppingPlanningPromptBuilder(CodeActPromptBuilder):
