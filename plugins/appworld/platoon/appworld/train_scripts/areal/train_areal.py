@@ -19,7 +19,12 @@ class AppWorldArealTrainerConfig(PlatoonArealRLTrainerConfig):
 
 def reward_processor(traj: dict) -> tuple[float, dict]:
     """Process trajectory rewards, extracting individual reward components."""
-    rewards_dict = {}
+    # Initialize with all expected keys to ensure consistency across trajectories
+    rewards_dict = {
+        "reward/success": 0.0,
+        "reward/subagent_success": 0.0,
+    }
+
     for step in traj["steps"]:
         reward_misc = step.get("misc", {}).get("reward_misc", {})
         for reward_key, reward_value in reward_misc.items():
