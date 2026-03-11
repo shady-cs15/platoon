@@ -1,5 +1,5 @@
 experiment_name: recursive-agents
-trial_name: appworld-ctx40000-cispo-14b-recursive-trial-sat-7
+trial_name: appworld-ctx40000-cispo-14b-recursive-trial-sat-11
 
 seed: 343
 total_train_epochs: 100
@@ -36,8 +36,8 @@ gconfig:
 workflow_config:
   rollout_config:
     model_name: ${actor.path}
-    max_steps: 40
-    output_dir: /fsx/areal/experiments/appworld-ctx40000-cispo-14b-recursive-trial-sat-7
+    max_steps: 75
+    output_dir: /fsx/areal/experiments/appworld-ctx40000-cispo-14b-recursive-trial-sat-11
     verbose: True
     train: true
     timeout: 7200
