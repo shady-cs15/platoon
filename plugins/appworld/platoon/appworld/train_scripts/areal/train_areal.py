@@ -16,22 +16,11 @@ from platoon.train.areal.workflows import StepWiseArealWorkflow
 class AppWorldArealTrainerConfig(PlatoonArealRLTrainerConfig):
     recursive: bool = False
     depth_aware: bool = False
+    delegation_bonus_unconditional_weight: float = 1.0  # 1.0 = fully unconditional (legacy), 0.0 = fully gated on success
 
-def reward_processor(traj: dict) -> tuple[float, dict]:
-    """Process trajectory rewards, extracting individual reward components."""
-    # Initialize with all expected keys to ensure consistency across trajectories
-    rewards_dict = {
-        "reward/success": 0.0,
-        "reward/subagent_success": 0.0,
-    }
 
-    for step in traj["steps"]:
-        reward_misc = step.get("misc", {}).get("reward_misc", {})
-        for reward_key, reward_value in reward_misc.items():
-            if reward_key.startswith("reward/"):
-                if reward_key not in rewards_dict:
-                    rewards_dict[reward_key] = 0.0
-                rewards_dict[reward_key] += reward_value
+def make_reward_processor(unconditional_weight: float = 1.0):
+    """Create a reward processor with configurable delegation bonus gating."""
 
     success_reward = rewards_dict.get("reward/success", 0.0)
     score = success_reward
@@ -53,6 +42,8 @@ def main(args):
     else:
         rollout_fn = run_rollout
 
+    reward_processor = make_reward_processor(config.delegation_bonus_unconditional_weight)
+
     train_dataset = Dataset.from_list([{"task_id": x} for x in load_task_ids(dataset_name="train")])
     val_dataset = Dataset.from_list([{"task_id": x} for x in load_task_ids(dataset_name="dev")])
 
@@ -73,10 +64,10 @@ def main(args):
             reward_processor=reward_processor,
             filter_errors=False,
         )
-        
+
         eval_workflow_config = deepcopy(config.workflow_config)
         eval_workflow_config.group_size = 1
-        
+
         eval_workflow = StepWiseArealWorkflow(
             rollout_fn,
             get_task,

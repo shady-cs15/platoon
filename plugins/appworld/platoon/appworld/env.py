@@ -423,7 +423,7 @@ class AppWorldCodeExecutor(CodeExecutor):
 
 class AppWorldRecursiveCodeExecutor(AppWorldCodeExecutor):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, subagent_success_threshold: float | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         if isinstance(self.task, SubTask) and self.task.parent_tasks:
             self.current_task_is_subtask = True
@@ -522,6 +522,10 @@ class AppWorldEnv(CodeActEnv):
 
                     reward_misc["reason"] = reason
                     reward_misc["rubric_dict"] = rubric_checklist.to_dict()
+                    reward_misc["rubric_raw_score"] = score
+
+                    if self._subagent_success_threshold is not None:
+                        score = 1.0 if score >= self._subagent_success_threshold else 0.0
 
                 except Exception as e:
                     reward_misc["reason"] = f"Failed rubric-based evaluation: {e}"
@@ -555,7 +559,11 @@ class AppWorldRecursiveEnv(AppWorldEnv):
         **kwargs,
     ):
         if code_executor is None:
-            code_executor = AppWorldRecursiveCodeExecutor(task, timeout_seconds=timeout_seconds)
+            code_executor = AppWorldRecursiveCodeExecutor(
+                task,
+                subagent_success_threshold=kwargs.get("subagent_success_threshold"),
+                timeout_seconds=timeout_seconds,
+            )
         super().__init__(task, code_executor, **kwargs)
 
     @property
@@ -588,8 +596,8 @@ class AppWorldDepthAwareCodeExecutor(AppWorldRecursiveCodeExecutor):
     ``max_steps`` when calling ``launch_subagent``.
     """
 
-    def __init__(self, *args, subagent_max_steps: int = 25, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, subagent_max_steps: int = 25, subagent_success_threshold: float | None = None, **kwargs):
+        super().__init__(*args, subagent_success_threshold=subagent_success_threshold, **kwargs)
         self._subagent_max_steps = subagent_max_steps
         self._inject_depth_aware_launch_subagent()
 
@@ -626,6 +634,7 @@ class AppWorldDepthAwareCodeExecutor(AppWorldRecursiveCodeExecutor):
             shell_id=shell_id,
             owns_world=False,
             subagent_max_steps=self._subagent_max_steps,
+            subagent_success_threshold=self._subagent_success_threshold,
         )
 
 
@@ -650,6 +659,7 @@ class AppWorldDepthAwareEnv(AppWorldRecursiveEnv):
             code_executor = AppWorldDepthAwareCodeExecutor(
                 task,
                 subagent_max_steps=subagent_max_steps,
+                subagent_success_threshold=kwargs.get("subagent_success_threshold"),
                 timeout_seconds=timeout_seconds,
             )
         super().__init__(task, code_executor, **kwargs)

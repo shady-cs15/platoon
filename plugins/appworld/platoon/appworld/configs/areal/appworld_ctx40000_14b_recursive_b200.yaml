@@ -1,10 +1,11 @@
 experiment_name: recursive-agents
-trial_name: appworld-ctx40000-cispo-14b-recursive-trial-sat-11
+trial_name: appworld-ctx40000-cispo-14b-recursive-bin-cond-sat-13
 
 seed: 343
 total_train_epochs: 100
 tokenizer_path: ${actor.path}
 depth_aware: true
+delegation_bonus_unconditional_weight: 0.5  # 1.0=legacy (fully unconditional), 0.5=half gated on success, 0.0=fully gated
 
 
 cluster:
@@ -37,11 +38,12 @@ workflow_config:
   rollout_config:
     model_name: ${actor.path}
     max_steps: 75
-    output_dir: /fsx/areal/experiments/appworld-ctx40000-cispo-14b-recursive-trial-sat-11
+    output_dir: /fsx/areal/experiments/appworld-ctx40000-cispo-14b-recursive-bin-cond-sat-13
     verbose: True
     train: true
     timeout: 7200
     step_timeout: 7200
+    subagent_success_threshold: 0.8
     inference_params:
         temperature: 1.0
         max_completion_tokens: 2048
@@ -130,7 +132,7 @@ sglang:
 
 # datasets
 train_dataset:
-  batch_size: 16
+  batch_size: 32
   type: rl
   path: ""
 
