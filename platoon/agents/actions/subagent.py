@@ -15,10 +15,18 @@ async def launch_subagent(goal: str, max_steps: int = 15, task_misc: dict | None
     Args:
         goal: The goal of the subagent.
         max_steps: The maximum number of steps the subagent can take.
+        task_misc: Optional metadata to attach to the subtask.
+        context: Optional dict of context to pass to the subagent (e.g. credentials,
+            access tokens, API details). The keys and values will be appended to the
+            goal so the subagent can use them directly.
 
     Returns:
         Returns the result of the subagent's execution.
     """
+    # Append context to the goal so the subagent sees it in its task description
+    if context:
+        goal = goal.rstrip() + "\n\nContext from parent agent:\n" + _format_context(context)
+
     # Cast is safe here: launch_subagent only works in contexts with forkable agents/envs
     agent = cast(ForkableAgent, current_agent.get())
     env = cast(ForkableEnv, current_env.get())

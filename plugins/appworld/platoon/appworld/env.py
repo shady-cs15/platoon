@@ -419,7 +419,7 @@ class AppWorldCodeExecutor(CodeExecutor):
             shell_id=shell_id,
             owns_world=False,
         )
-    
+
 
 class AppWorldRecursiveCodeExecutor(AppWorldCodeExecutor):
 
@@ -605,16 +605,18 @@ class AppWorldDepthAwareCodeExecutor(AppWorldRecursiveCodeExecutor):
         """Replace launch_subagent in the shell with a version using fixed max_steps."""
         max_steps = self._subagent_max_steps
 
-        async def depth_aware_launch_subagent(goal: str) -> str:
+        async def depth_aware_launch_subagent(goal: str, context: dict | None = None) -> str:
             """Launch a subagent to solve a task.
 
             Args:
                 goal: The goal of the subagent.
+                context: Optional dict of context to pass to the subagent (e.g.
+                    credentials, access tokens, API details).
 
             Returns:
                 Returns the answer or finish message for the goal.
             """
-            return await launch_subagent(goal=goal, max_steps=max_steps)
+            return await launch_subagent(goal=goal, max_steps=max_steps, context=context)
 
         shell = self.world.get_shell(self.shell_id)
         shell.user_ns["launch_subagent"] = depth_aware_launch_subagent
