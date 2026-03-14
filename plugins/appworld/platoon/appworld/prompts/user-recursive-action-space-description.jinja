@@ -56,6 +56,8 @@ result = await launch_subagent(
 )
 print(f"Subagent result: {result}")
 
+The `context` parameter accepts a dictionary of key-value pairs that will be made available to the subagent in its task description. Use it to pass any information you have already gathered that the subagent would otherwise need to re-discover — for example, credentials, access tokens, relevant API details, or intermediate results. This saves the subagent from spending steps on information you already have.
+
 
 Each code execution will produce an output that you can use in subsequent calls. Using these APIs, you can now generate code, that the environment will execute, to solve the task.
 
