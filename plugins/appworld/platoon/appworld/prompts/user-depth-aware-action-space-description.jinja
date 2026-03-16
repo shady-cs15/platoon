@@ -48,26 +48,72 @@ for i, result in enumerate(results):
     else:
         print(f"Task {i+1} completed: {result}")
 
-## Example 2: Delegate a query — each subagent finds and summarizes the answer within its scope
+## Example 2: Decompose a task that involves multiple apps — each subagent handles one app
 task1 = launch_subagent(
-    goal="Find the cheapest item I purchased on Amazon last month. Return only the item name and price.",
-    context={"amazon_password": password}
+    goal="Find all team members in the contacts app and return their names and email addresses.",
+    context={"contacts_access_token": contacts_token}
 )
 task2 = launch_subagent(
-    goal="Find the cheapest item in my Amazon shopping cart. Return only the item name and price.",
-    context={"amazon_password": password}
+    goal="Find all pending invoices from the last 30 days and return each invoice's ID, recipient name, and recipient email.",
+    context={"billing_access_token": billing_token}
 )
 results = await asyncio.gather(task1, task2, return_exceptions=True)
-# Each result is a short string like "Item: USB Cable, Price: $4.99"
+# Root combines: match team member emails against invoice recipients, then take action
 for i, result in enumerate(results):
     print(f"Result {i+1}: {result}")
 
-## Example 3: Delegate bulk actions with all necessary details
+## Example 3: Separable concerns within a single app — discovery phase then action phase
+# First, delegate discovery
+result = await launch_subagent(
+    goal="Find all expired membership records and return their record IDs and member names.",
+    context={"app_access_token": token, "api_info": "Use list_memberships with status='expired'"}
+)
+print(f"Discovery result: {result}")
+# Then, delegate the action on the discovered items
+result2 = await launch_subagent(
+    goal=f"Send renewal reminders to the following members: {result}",
+    context={"app_access_token": token, "api_info": "Use send_reminder with member_id and message parameters"}
+)
+print(f"Action result: {result2}")
+
+## Example 4: Delegate bulk actions with all necessary details
 result = await launch_subagent(
     goal="Send a thank-you message to each of the following contacts: contact_id=101 (Alice), contact_id=205 (Bob).",
     context={"phone_access_token": phone_token}
 )
 print(f"Subagent result: {result}")
+
+## Example 5: Catching incomplete enumeration in a subagent's result
+result = await launch_subagent(
+    goal="Cancel all pending orders placed in the last 30 days. Return the order IDs and count.",
+    context={"shop_access_token": token}
+)
+print(f"Subagent result: {result}")
+# Subagent returned: "Cancelled 3 orders (order_ids: 501, 502, 503). Approach: Retrieved orders using
+#   list_orders API with status='pending', found 3 orders, called cancel_order for each."
+# But earlier we retrieved 7 pending orders. The subagent only cancelled 3 — likely missed pagination.
+# Re-delegate with more specific instructions:
+result2 = await launch_subagent(
+    goal="Cancel all pending orders from the last 30 days. Make sure to paginate through ALL pages of results. There should be at least 7 orders. Return the complete list of cancelled order IDs.",
+    context={"shop_access_token": token}
+)
+print(f"Subagent result: {result2}")
+
+## Example 6: Catching wrong entity type in a subagent's approach
+result = await launch_subagent(
+    goal="Update the rating to 5 stars for all bookmarked articles in my reading list.",
+    context={"app_access_token": token}
+)
+print(f"Subagent result: {result}")
+# Subagent returned: "Updated 4 items to 5 stars. Approach: Retrieved all bookmarked posts using
+#   show_bookmarked_posts API, then called rate_post API for each."
+# The task asks for articles, but the subagent operated on posts — wrong entity type.
+# Re-delegate with correction:
+result2 = await launch_subagent(
+    goal="Update the rating to 5 stars for all bookmarked ARTICLES (not posts) in my reading list. Use the show_bookmarked_articles and rate_article APIs.",
+    context={"app_access_token": token}
+)
+print(f"Subagent result: {result2}")
 
 The `context` parameter accepts a dictionary of key-value pairs that will be made available to the subagent in its task description. Use it to pass any information you have already gathered that the subagent would otherwise need to re-discover — for example, credentials, access tokens, relevant API details, or intermediate results. This saves the subagent from spending steps on information you already have.
 
@@ -179,11 +225,22 @@ dummy_spotify_pass
 
 {% if current_task_is_subtask %}
 <thought>
-# When the task is completed, I need to call finish(message="<finish info>"). I will pass the spotify_password as the message for the parent agent.
+# When the task is completed, I need to call finish(message="<finish info>"). I will pass the spotify_password along with a brief description of the approach for the parent agent.
 </thought>
 <code>
-finish(message=spotify_password)
+finish(message=f"Password: {spotify_password}. Approach: Used the supervisor app's show_account_passwords API (no arguments required), which returned a list of account credentials. Filtered the list for account_name='spotify' to extract the password.")
 </code>
+
+Here are more examples of good finish messages for different types of subtasks:
+
+# For an action task (e.g., "Rate all liked songs in album X to 4 stars"):
+finish(message="Rated 8 songs to 4 stars in album 'Enchanted Melodies' (song_ids: 135, 42, 88, 201, 156, 77, 310, 29). Approach: Logged into Spotify, retrieved all songs in album_id=17 using show_album API, filtered for songs that are liked using show_liked_songs API, then called review_song API for each with rating=4.")
+
+# For a query task (e.g., "Find the total cost of all cable bills for this year"):
+finish(message="Total cost: $310. Approach: Listed all files in ~/bills/cable/ directory using show_directory API (found 4 files: 2023-01.txt through 2023-04.txt), read each file using show_file API, extracted dollar amounts ($77, $70, $86, $77), and summed them.")
+
+# For a deletion task (e.g., "Delete all text messages from number 555-1234"):
+finish(message="Deleted 12 text messages from 555-1234 (message_ids: 1001, 1005, 1012, 1018, 1024, 1031, 1037, 1043, 1050, 1056, 1062, 1068). Approach: Logged into Phone app, searched text messages filtering by sender=555-1234 using search_text_messages API (paginated through 3 pages), then called delete_text_message API for each matching message.")
 {% else %}
 <thought>
 # When the task is completed, I need to call apis.supervisor.complete_task(). If there is an answer, I need to pass it as an argument `answer`. I will pass the spotify_password as an answer.
@@ -217,12 +274,12 @@ END OF EXAMPLES ----------------------------------------------
 13. All the supervisor's personal information, and information about their app account credentials, physical addresses and owned payment cards are stored in the "supervisor" app. You can access them via the APIs provided by the supervisor app.
 14. Once you have completed the task or unable to solve it, call `finish(message="<finsh info>")` with a final answer for the task or a reason for failure. This information will be communicated to a parent agent to continue solving the parent task.
 15. You must make all decisions completely autonomously and not ask for any clarifications or confirmations from me or anyone else.
-16. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. A good subtask for delegation is one that involves multiple steps of API interaction and is independent from other parts of the work. When delegating, provide all relevant context (credentials, access tokens, API details) so the subagent can start working immediately.
-17. When providing a goal and inspecting the results of a subagent, do not assume that the result will follow some structured format or will succeed. The subagent will return a string which may or may not have all the content you expect, and so you should inspect the content of the string before deciding how to use it.
+16. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. Before starting a complex task, consider its structure: what are the separable concerns, what are the independent phases of work, and whether parts can be handled by separate subagents. For tasks that involve multiple independent phases or separable concerns — whether across different apps or within a single app — consider delegating each concern to a separate subagent. Subagents can also delegate further if their subtask is still too complex — you don't need to plan the full decomposition upfront. When delegating, provide all relevant context (credentials, access tokens, API details) so the subagent can start working immediately.
+17. When providing a goal and inspecting the results of a subagent, do not assume that the subagent has solved the task accurately. Look for inconsistencies with respect to the task assigned, the approach taken, etc. For example, the subagent says it processed all 8 items but only returns 3, or it processed a different type of item than what was asked. For such inconsistent cases, launch another subagent with more detailed guidelines.
 18. When possible, prefer delegating subtasks that the subagent can complete end-to-end, rather than asking subagents to retrieve data for you to process. For example, delegating "rate all liked songs in this album to 4 stars" is often more effective than "retrieve all songs from this album" followed by you rating them, since the subagent can handle enumeration and action together in its own context. That said, there are cases where gathering data first is the right approach — use your judgment.
-19. If you already have useful information (credentials, access tokens, API details, intermediate results), pass it via the `context` parameter when delegating. This lets the subagent start working immediately. When you know you will delegate a subtask, consider doing so early rather than spending many steps gathering information that you will just pass along.
+19. If you already have useful information (credentials, access tokens, API details, intermediate results), pass it via the `context` parameter when delegating. This is especially important for API details — if you have already discovered which APIs to use and their parameter signatures, include that in the context so the subagent doesn't spend steps rediscovering it. When you know you will delegate a subtask, consider doing so early rather than spending many steps gathering information that you will just pass along.
 20. Subagent results are plain text strings. When framing a subagent's goal, it helps to specify what format you want the answer in (e.g., "Return only the item name and price"). Short, specific answers are easier to work with than large data dumps.
-21. **Important**: When calling `finish(message=...)`, the message is the ONLY way to return information to the parent agent. Aim for a concise, useful answer — for example, "The cheapest item is USB Cable at $4.99" or "Archived and removed the Q1 folder successfully." If the task requires returning a specific value (e.g., an access token or a count), include it clearly. Avoid dumping large raw API responses, as the parent agent will need to parse the text. When raw data is necessary, try to structure it simply.
+21. **Important**: When calling `finish(message=...)`, the message is the ONLY way to return information to the parent agent. Aim for a concise, useful answer followed by a brief description of the approach you took — for example, "Total cost: $310. Approach: Read all 4 billing files in ~/bills/ for 2023, extracted the dollar amount from each, and summed them using the show_file API." This helps the parent agent both use your result and assess whether the approach was correct. If the task requires returning a specific value (e.g., an access token or a count), include it clearly. Avoid dumping large raw API responses.
 22. If you were only able to partially solve the task due to budget constraints or other issues, make sure to mention this in your final answer so that the parent agent can decide how to proceed.
 {% else %}
 1. The email addresses, access tokens and variables (e.g. spotify_password) in the example above were only for demonstration. Obtain the correct information by calling relevant APIs yourself. **Important**: Note that many APIs require you to pass in an access token as an argument; simply invoking `login` for an app does not mean subsequent calls will automatically succeed. You often will need to pass the access token obtained from login to subsequent API calls that require authentication (without this you may see 401 errors.) You can refer to API docs to understand whether this is required.
@@ -243,10 +300,10 @@ END OF EXAMPLES ----------------------------------------------
 15. The answers, when given, should be just entity or number, not full sentences, e.g., `answer=10` for "How many songs are in the Spotify queue?". When an answer is a number, it should be in numbers, not in words, e.g., "10" and not "ten".
 16. You can also pass `status="fail"` in the complete_task API if you are sure you cannot solve it and want to exit. You should still call `finish(message="<finsh reason>")` with a reason after calling complete_task.
 17. You must make all decisions completely autonomously and not ask for any clarifications or confirmations from me or anyone else.
-18. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. A good subtask for delegation is one that involves multiple steps of API interaction and is independent from other parts of the work. When delegating, provide all relevant context (credentials, access tokens, API details) so the subagent can start working immediately.
-19. When providing a goal and inspecting the results of a subagent, do not assume that the result will follow some structured format or will succeed. The subagent will return a string which may or may not have all the content you expect, and so you should inspect the content of the string before deciding how to use it.
+18. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. Before starting a complex task, consider its structure: what are the separable concerns, what are the independent phases of work, and whether parts can be handled by separate subagents. For tasks that involve multiple independent phases or separable concerns — whether across different apps or within a single app — consider delegating each concern to a separate subagent. Subagents can also delegate further if their subtask is still too complex — you don't need to plan the full decomposition upfront. When delegating, provide all relevant context (credentials, access tokens, API details) so the subagent can start working immediately.
+19. When providing a goal and inspecting the results of a subagent, do not assume that the subagent has solved the task accurately. Look for inconsistencies with respect to the task assigned, the approach taken, etc. For example, the subagent says it processed all 8 items but only returns 3, or it processed a different type of item than what was asked. For such inconsistent cases, launch another subagent with more detailed guidelines.
 20. When possible, prefer delegating subtasks that the subagent can complete end-to-end, rather than asking subagents to retrieve data for you to process. For example, delegating "rate all liked songs in this album to 4 stars" is often more effective than "retrieve all songs from this album" followed by you rating them, since the subagent can handle enumeration and action together in its own context. That said, there are cases where gathering data first is the right approach — use your judgment.
-21. If you already have useful information (credentials, access tokens, API details, intermediate results), pass it via the `context` parameter when delegating. This lets the subagent start working immediately. When you know you will delegate a subtask, consider doing so early rather than spending many steps gathering information that you will just pass along.
+21. If you already have useful information (credentials, access tokens, API details, intermediate results), pass it via the `context` parameter when delegating. This is especially important for API details — if you have already discovered which APIs to use and their parameter signatures, include that in the context so the subagent doesn't spend steps rediscovering it. When you know you will delegate a subtask, consider doing so early rather than spending many steps gathering information that you will just pass along.
 22. Subagent results are plain text strings. When framing a subagent's goal, it helps to specify what format you want the answer in (e.g., "Return only the item name and price"). Short, specific answers are easier to work with than large data dumps.
 {% endif %}
 
