@@ -5,6 +5,9 @@ seed: 343
 total_train_epochs: 100
 tokenizer_path: ${actor.path}
 recursive: false
+train_split: train_plus_dev
+task_filter: challenge
+eval_split: test_challenge
 
 
 cluster:
@@ -160,7 +163,7 @@ evaluator:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: null
-  freq_steps: 5
+  freq_steps: 20
   freq_secs: null
 
 stats_logger:

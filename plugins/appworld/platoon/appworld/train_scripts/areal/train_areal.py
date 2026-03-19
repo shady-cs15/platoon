@@ -2,11 +2,11 @@ import sys
 
 from copy import deepcopy
 from areal.api.cli_args import load_expr_config
-from appworld import load_task_ids
 from datasets import Dataset
 from dataclasses import dataclass
 
 from platoon.appworld.rollout import run_rollout, run_recursive_rollout, run_depth_aware_rollout
+from platoon.appworld.task_sets import resolve_eval_task_ids, resolve_train_task_ids, summarize_task_selection
 from platoon.appworld.tasks import get_task
 from platoon.train.areal import PlatoonArealRLTrainer, PlatoonArealRLTrainerConfig
 from platoon.train.areal.workflows import StepWiseArealWorkflow
@@ -17,6 +17,9 @@ class AppWorldArealTrainerConfig(PlatoonArealRLTrainerConfig):
     recursive: bool = False
     depth_aware: bool = False
     delegation_bonus_unconditional_weight: float = 1.0  # 1.0 = fully unconditional (legacy), 0.0 = fully gated on success
+    train_split: str = "train"
+    eval_split: str = "dev"
+    task_filter: str = "none"
 
 
 def make_reward_processor(unconditional_weight: float = 1.0):
@@ -53,8 +56,24 @@ def main(args):
 
     reward_processor = make_reward_processor(config.delegation_bonus_unconditional_weight)
 
-    train_dataset = Dataset.from_list([{"task_id": x} for x in load_task_ids(dataset_name="train")])
-    val_dataset = Dataset.from_list([{"task_id": x} for x in load_task_ids(dataset_name="dev")])
+    selection_summary = summarize_task_selection()
+    train_task_ids = resolve_train_task_ids(config.train_split, config.task_filter)
+    eval_task_ids = resolve_eval_task_ids(config.eval_split)
+
+    print(
+        "AppWorld task selection:",
+        {
+            **selection_summary,
+            "train_split": config.train_split,
+            "task_filter": config.task_filter,
+            "train_selected": len(train_task_ids),
+            "eval_split": config.eval_split,
+            "eval_selected": len(eval_task_ids),
+        },
+    )
+
+    train_dataset = Dataset.from_list([{"task_id": x} for x in train_task_ids])
+    val_dataset = Dataset.from_list([{"task_id": x} for x in eval_task_ids])
 
     with PlatoonArealRLTrainer(
         config=config,

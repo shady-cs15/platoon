@@ -6,6 +6,9 @@ total_train_epochs: 100
 tokenizer_path: ${actor.path}
 depth_aware: true
 delegation_bonus_unconditional_weight: 1.0  # 1.0=legacy (fully unconditional), 0.5=half gated on success, 0.0=fully gated
+train_split: train_plus_dev
+task_filter: challenge
+eval_split: test_challenge
 
 
 cluster:
@@ -163,7 +166,7 @@ evaluator:
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: null
-  freq_steps: 5
+  freq_steps: 20
   freq_secs: null
 
 stats_logger:
@@ -179,4 +182,3 @@ launcher:
   inference_server_mem_per_gpu: 32768
   trainer_cpus_per_gpu: 4
   trainer_mem_per_gpu: 32768
-
