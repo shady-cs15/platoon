@@ -72,6 +72,25 @@ print(f"Subagent result: {result}")
 
 The `context` parameter accepts a dictionary of key-value pairs that will be made available to the subagent in its task description. Use it to pass any information you have already gathered that the subagent would otherwise need to re-discover — for example, credentials, access tokens, relevant API details, or intermediate results. This saves the subagent from spending steps on information you already have.
 
+## Always verify subagent results before using them. Check for incomplete work, wrong entities, or missing data.
+## Example: verifying a subagent's result and respawning with corrections
+result = await launch_subagent(
+    goal="Delete all voice messages from 555-1234. Return the count and message IDs.",
+    max_steps=30,
+    context={"phone_access_token": phone_token}
+)
+print(f"Subagent result: {result}")
+# Subagent returned: "Deleted 3 voice messages (ids: 101, 102, 103). Approach: searched voice messages
+#   for sender=555-1234, found 3 messages on page 1, deleted each."
+# But earlier we found 7 voice messages. The subagent only checked page 1 — likely missed pagination.
+# Respawn with more specific instructions:
+result2 = await launch_subagent(
+    goal="Delete ALL voice messages from 555-1234. Paginate through ALL pages. There should be at least 7 messages. Return the complete list of deleted message IDs.",
+    max_steps=30,
+    context={"phone_access_token": phone_token}
+)
+print(f"Subagent result: {result2}")
+
 
 Each code execution will produce an output that you can use in subsequent calls. Using these APIs, you can now generate code, that the environment will execute, to solve the task.
 
