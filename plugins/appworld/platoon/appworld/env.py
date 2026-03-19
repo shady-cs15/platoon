@@ -489,11 +489,13 @@ class AppWorldEnv(CodeActEnv):
         task: Task,
         code_executor: AppWorldCodeExecutor | None = None,
         timeout_seconds: int | None = DEFAULT_APPWORLD_TIMEOUT_SECONDS,
+        subagent_success_threshold: float | None = None,
         **kwargs,
     ):
         if code_executor is None:
             code_executor = AppWorldCodeExecutor(task, timeout_seconds=timeout_seconds)
 
+        self._subagent_success_threshold = subagent_success_threshold
         super().__init__(task, code_executor, **kwargs)
 
     @property
@@ -673,5 +675,6 @@ class AppWorldDepthAwareEnv(AppWorldRecursiveEnv):
             task,
             code_executor=code_executor,
             subagent_max_steps=self._subagent_max_steps,
+            subagent_success_threshold=self._subagent_success_threshold,
         )
     
