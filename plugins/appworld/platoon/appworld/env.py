@@ -5,7 +5,6 @@ from appworld.common.utils import get_stack_trace_from_exception
 from IPython.core.interactiveshell import ExecutionResult
 from IPython.terminal.embed import InteractiveShellEmbed
 from pathlib import Path
-from rubric.core.checklist import RubricChecklistFast 
 from textwrap import dedent
 from traitlets.config.loader import Config
 import ast
@@ -25,7 +24,7 @@ from platoon.episode.context import finish_message, error_message
 from platoon.envs.codeact.types import CodeActStep, CodeActObservation
 from platoon.utils.prompt_retriever import PromptRetriever
 from platoon.appworld.agent import AppWorldCodeActPromptBuilder
-from platoon.appworld.rubric_judge import configured_rubric_judge
+from platoon.appworld.rubric_judge import abinary_judge_subtask
 
 
 def _patch_freezegun_idempotent_stop() -> None:
@@ -522,31 +521,28 @@ class AppWorldEnv(CodeActEnv):
         if self._state.finished:
             if isinstance(self._task, SubTask) and self._task.parent_tasks:
                 try:
-                    rubric_checklist = RubricChecklistFast(self._task.goal)
                     prompt_builder = AppWorldCodeActPromptBuilder()
                     action_history = prompt_builder.build_action_history_description(await self.observe())
                     # Pull messages from episode-level context vars first; fall back to last step if available
                     final_message = finish_message.get() or (self._state.history[-1].misc.get("finish_message") if self._state.history else None)
                     err_message = error_message.get() or (self._state.history[-1].misc.get("error_message") if self._state.history else None)
 
-                    rubric_context = f"We need to judge the performance of an agent on the task.\n\n# Agent Trajectory Info\n## Action History\n{action_history}\n\n## Final Message\n{final_message}\n\n## Error Message\n{err_message}"
-                    async with configured_rubric_judge(
+                    score, reason = await abinary_judge_subtask(
+                        goal=self._task.goal,
+                        action_history=action_history,
+                        final_message=final_message,
+                        err_message=err_message,
                         model=self._rubric_model,
                         base_url=self._rubric_base_url,
                         api_key=self._rubric_api_key,
                         api_key_env=self._rubric_api_key_env,
-                    ):
-                        score, reason = await rubric_checklist.aevaluate(include_reason=True, context=rubric_context)
+                    )
 
                     reward_misc["reason"] = reason
-                    reward_misc["rubric_dict"] = rubric_checklist.to_dict()
                     reward_misc["rubric_raw_score"] = score
 
-                    if self._subagent_success_threshold is not None:
-                        score = 1.0 if score >= self._subagent_success_threshold else 0.0
-
                 except Exception as e:
-                    reward_misc["reason"] = f"Failed rubric-based evaluation: {e}"
+                    reward_misc["reason"] = f"Failed binary subtask evaluation: {e}"
                     score = 0.
             else:
                 try:
