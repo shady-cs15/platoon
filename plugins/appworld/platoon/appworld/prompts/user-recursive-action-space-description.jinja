@@ -29,7 +29,17 @@ finish(message=<finish-reason>)
 {% endif %}
 
 ## You can delegate substantial, independent subtasks to subagents using the async `launch_subagent` function.
-## Use the `context` parameter to pass credentials, access tokens, and other useful information so the subagent can start working immediately.
+## Use delegation only when it reduces complexity: parallel independent branches, a clean action on a known set of entities, or a narrow subproblem with a clear output.
+## Do NOT delegate the entire task unless the whole task is already a narrow, self-contained branch.
+## Before launching a subagent, decide explicitly:
+## 1. Can I solve this directly in a few steps? If yes, solve it directly.
+## 2. If delegating, what exact branch is independent, and what exact output do I need back?
+## 3. What context can I pass so the child does not repeat discovery work?
+## Ask the subagent to return a short plain-text report in this format:
+## STATUS: success | partial | fail
+## RESULT: the exact answer, IDs, or action outcome
+## EVIDENCE: how many items/pages/files were checked and which APIs were used
+## RISKS: anything that may still be incomplete or uncertain
 ## Example: gathering data from two independent apps in parallel
 task1 = launch_subagent(
     goal="Login to Spotify and retrieve all songs from the song library and album library.",
@@ -72,10 +82,15 @@ print(f"Subagent result: {result}")
 
 The `context` parameter accepts a dictionary of key-value pairs that will be made available to the subagent in its task description. Use it to pass any information you have already gathered that the subagent would otherwise need to re-discover — for example, credentials, access tokens, relevant API details, or intermediate results. This saves the subagent from spending steps on information you already have.
 
-## Always verify subagent results before using them. Check for incomplete work, wrong entities, or missing data.
+## Always verify subagent results before using them. Treat the child result as a claim, not a fact.
+## Prefer at least one cheap external check before trusting a child result:
+## - re-query the affected object or count
+## - confirm the expected number of items/pages/files were handled
+## - verify the entity type and filters match the task
+## If a child result looks wrong, do not simply repeat the same delegation. Identify the specific inconsistency and re-launch with a corrected, narrower goal.
 ## Example: verifying a subagent's result and respawning with corrections
 result = await launch_subagent(
-    goal="Delete all voice messages from 555-1234. Return the count and message IDs.",
+    goal="Delete all voice messages from 555-1234. Return in the format STATUS/RESULT/EVIDENCE/RISKS. Include the count and message IDs.",
     max_steps=30,
     context={"phone_access_token": phone_token}
 )
@@ -85,7 +100,7 @@ print(f"Subagent result: {result}")
 # But earlier we found 7 voice messages. The subagent only checked page 1 — likely missed pagination.
 # Respawn with more specific instructions:
 result2 = await launch_subagent(
-    goal="Delete ALL voice messages from 555-1234. Paginate through ALL pages. There should be at least 7 messages. Return the complete list of deleted message IDs.",
+    goal="Delete ALL voice messages from 555-1234. Paginate through ALL pages. There should be at least 7 messages. Return STATUS/RESULT/EVIDENCE/RISKS with the complete list of deleted message IDs.",
     max_steps=30,
     context={"phone_access_token": phone_token}
 )
@@ -237,11 +252,16 @@ END OF EXAMPLES ----------------------------------------------
 13. All the supervisor's personal information, and information about their app account credentials, physical addresses and owned payment cards are stored in the "supervisor" app. You can access them via the APIs provided by the supervisor app.
 14. Once you have completed the task or unable to solve it, call `finish(message="<finsh info>")` with a final answer for the task or a reason for failure. This information will be communicated to a parent agent to continue solving the parent task.
 15. You must make all decisions completely autonomously and not ask for any clarifications or confirmations from me or anyone else.
-16. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. A good subtask for delegation is one that involves multiple steps of API interaction and is independent from other parts of the work. When delegating, provide all relevant context (credentials, access tokens, API details) so the subagent can start working immediately.
-17. When providing a goal and inspecting the results of a subagent, do not assume that the result will follow some structured format or will succeed. The subagent will return a string which may or may not have all the content you expect, and so you should inspect the content of the string before deciding how to use it.
-18. Make sure to allocate appropriate budget if spawning subagents. Note that a subagent's max_steps is shared between the launched subagents and any subagents they launch. You also cannot launch subagents with more budget than the remaining step budget you have available.
-19. **Important**: When calling `finish(message=...)`, the message is the ONLY way to return data to the parent agent. Include the actual data (e.g., the list of songs, the computed result, the access token) in the message — not just a summary like "I have retrieved the data." The parent agent cannot access your variables; it can only see the string you pass to `finish()`.
-20. If you were only able to partially solve the task due to budget constraints or other issues, make sure to mention this in your final answer so that the parent agent can decide how to proceed.
+16. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. Delegate only if the subtask is independent and has a clear output that you can later verify. Good delegated subtasks are: one branch of a parallel search, one branch of a bulk action, or one cleanly specified action over a known entity set. Bad delegated subtasks are: "solve this whole task", vague retries, or tasks where you have not yet identified what success looks like.
+17. Before launching a subagent, decide whether direct execution is cheaper. If you can likely solve the work directly in a few calls, do it yourself instead of delegating.
+18. When delegating, provide all relevant context (credentials, access tokens, API details, known counts, known constraints) so the subagent can start working immediately and can check itself against those constraints.
+19. Ask the subagent to return a short plain-text report with these fields exactly: `STATUS: ...`, `RESULT: ...`, `EVIDENCE: ...`, `RISKS: ...`. In `EVIDENCE`, the subagent should state what APIs it used and how many items/pages/files it checked. In `RISKS`, it should mention anything incomplete, uncertain, or skipped.
+20. When inspecting a subagent result, do not assume it succeeded just because it sounds plausible. Verify at least one concrete part of it whenever possible: counts, entity IDs, pagination completeness, final object state, or whether the requested action actually happened.
+21. If a child result is inconsistent, identify the exact inconsistency before re-delegating. Examples: wrong entity type, only page 1 checked, count does not match known total, action reported success but object state did not change. Re-delegate with a narrower and more specific goal; do not simply repeat the same request.
+22. Make sure to allocate appropriate budget if spawning subagents. Note that a subagent's max_steps is shared between the launched subagents and any subagents they launch. You also cannot launch subagents with more budget than the remaining step budget you have available.
+23. **Important**: When calling `finish(message=...)`, the message is the ONLY way to return data to the parent agent. Include the actual data (e.g., the list of songs, the computed result, the access token) in the message — not just a summary like "I have retrieved the data." The parent agent cannot access your variables; it can only see the string you pass to `finish()`.
+24. Use the same plain-text report structure in your own `finish(message=...)` output whenever practical: `STATUS`, `RESULT`, `EVIDENCE`, `RISKS`. Keep it short, but include the actual result and enough evidence for the parent to judge whether to trust it.
+25. If you were only able to partially solve the task due to budget constraints or other issues, make sure to mention this explicitly in `RISKS` so that the parent agent can decide how to proceed.
 {% else %}
 1. The email addresses, access tokens and variables (e.g. spotify_password) in the example above were only for demonstration. Obtain the correct information by calling relevant APIs yourself. **Important**: Note that many APIs require you to pass in an access token as an argument; simply invoking `login` for an app does not mean subsequent calls will automatically succeed. You often will need to pass the access token obtained from login to subsequent API calls that require authentication (without this you may see 401 errors.) You can refer to API docs to understand whether this is required.
 2.Only generate valid code blocks and put them in <python>...</python> blocks.
@@ -261,9 +281,13 @@ END OF EXAMPLES ----------------------------------------------
 15. The answers, when given, should be just entity or number, not full sentences, e.g., `answer=10` for "How many songs are in the Spotify queue?". When an answer is a number, it should be in numbers, not in words, e.g., "10" and not "ten".
 16. You can also pass `status="fail"` in the complete_task API if you are sure you cannot solve it and want to exit. You should still call `finish(message="<finsh reason>")` with a reason after calling complete_task.
 17. You must make all decisions completely autonomously and not ask for any clarifications or confirmations from me or anyone else.
-18. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. A good subtask for delegation is one that involves multiple steps of API interaction and is independent from other parts of the work. When delegating, provide all relevant context (credentials, access tokens, API details) so the subagent can start working immediately.
-19. When providing a goal and inspecting the results of a subagent, do not assume that the result will follow some structured format or will succeed. The subagent will return a string which may or may not have all the content you expect, and so you should inspect the content of the string before deciding how to use it.
-20. Make sure to allocate appropriate budget if spawning subagents. Note that a subagent's max_steps is shared between the launched subagents and any subagents they launch. You also cannot launch subagents with more budget than the remaining step budget you have available.
+18. You can delegate substantial subtasks to a subagent using the async `launch_subagent` function. Delegate only if the subtask is independent and has a clear output that you can later verify. Good delegated subtasks are one branch of a parallel search, one branch of a bulk action, or one cleanly specified action over a known entity set. Avoid delegating the whole task unless the whole task is already a narrow, self-contained branch.
+19. Before launching a subagent, decide whether direct execution is cheaper. If you can likely solve the work directly in a few calls, do it yourself instead of delegating.
+20. When delegating, provide all relevant context (credentials, access tokens, API details, known counts, known constraints) so the subagent can start working immediately and can check itself against those constraints.
+21. Ask the subagent to return a short plain-text report with these fields exactly: `STATUS: ...`, `RESULT: ...`, `EVIDENCE: ...`, `RISKS: ...`. In `EVIDENCE`, the subagent should state what APIs it used and how many items/pages/files it checked. In `RISKS`, it should mention anything incomplete, uncertain, or skipped.
+22. When inspecting a subagent result, do not assume it succeeded just because it sounds plausible. Verify at least one concrete part of it whenever possible: counts, entity IDs, pagination completeness, final object state, or whether the requested action actually happened.
+23. If a child result is inconsistent, identify the exact inconsistency before re-delegating. Examples: wrong entity type, only page 1 checked, count does not match known total, action reported success but object state did not change. Re-delegate with a narrower and more specific goal; do not simply repeat the same request.
+24. Make sure to allocate appropriate budget if spawning subagents. Note that a subagent's max_steps is shared between the launched subagents and any subagents they launch. You also cannot launch subagents with more budget than the remaining step budget you have available.
 {% endif %}
 
 # CURRENT TASK CONTEXT
