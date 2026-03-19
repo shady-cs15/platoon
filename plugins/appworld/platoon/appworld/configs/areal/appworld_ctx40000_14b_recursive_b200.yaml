@@ -1,5 +1,5 @@
 experiment_name: recursive-agents
-trial_name: appworld-recursive-sat-19
+trial_name: appworld-recursive-sat-21
 
 seed: 343
 total_train_epochs: 100
@@ -38,11 +38,11 @@ workflow_config:
   rollout_config:
     model_name: ${actor.path}
     max_steps: 75
-    output_dir: /fsx/areal/experiments/appworld-recursive-sat-19
+    output_dir: /fsx/areal/experiments/appworld-recursive-sat-21
     verbose: True
     train: true
-    timeout: 7200
-    step_timeout: 7200
+    timeout: 2700
+    step_timeout: 2700
     inference_params:
         temperature: 1.0
         max_completion_tokens: 2048
@@ -131,7 +131,7 @@ sglang:
 
 # datasets
 train_dataset:
-  batch_size: 32
+  batch_size: 16
   type: rl
   path: ""
 
