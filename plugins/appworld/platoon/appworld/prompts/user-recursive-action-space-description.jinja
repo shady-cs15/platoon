@@ -49,10 +49,24 @@ for i, result in enumerate(results):
         print(f"Task {i+1} completed: {result}")
 
 ## If delegating more involved tasks, you may want to allocate more budget to the subagent.
+## Pass the actual API docs you have already retrieved so the subagent does not waste steps re-discovering them.
 result = await launch_subagent(
     goal="Send Venmo payment requests of $25.50 to each of the following users: user_id=101 (Alice), user_id=205 (Bob).",
     max_steps=45,
-    context={"venmo_access_token": venmo_token, "venmo_api_info": "create_payment_request takes: access_token, user_id, amount, description"}
+    context={
+        "venmo_access_token": venmo_token,
+        "create_payment_request_api_doc": {
+            "app_name": "venmo", "api_name": "create_payment_request",
+            "path": "/venmo/payment_requests", "method": "POST",
+            "description": "Create a payment request to another user.",
+            "parameters": [
+                {"name": "access_token", "type": "string", "required": True},
+                {"name": "user_id", "type": "integer", "required": True},
+                {"name": "amount", "type": "number", "required": True},
+                {"name": "description", "type": "string", "required": False}
+            ]
+        },
+    }
 )
 print(f"Subagent result: {result}")
 

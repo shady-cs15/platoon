@@ -63,16 +63,27 @@ for i, result in enumerate(results):
     print(f"Result {i+1}: {result}")
 
 ## Example 3: Separable concerns within a single app — discovery phase then action phase
-# First, delegate discovery
+# First, delegate discovery — pass the actual API doc so the subagent can start calling immediately
 result = await launch_subagent(
     goal="Find all expired membership records and return their record IDs and member names.",
-    context={"app_access_token": token, "api_info": "Use list_memberships with status='expired'"}
+    context={
+        "app_access_token": token,
+        "list_memberships_api_doc": {"app_name": "club", "api_name": "list_memberships", "method": "GET",
+            "parameters": [{"name": "access_token", "type": "string", "required": True},
+                           {"name": "status", "type": "string", "required": False, "description": "Filter by status: active, expired, pending"}]}
+    }
 )
 print(f"Discovery result: {result}")
 # Then, delegate the action on the discovered items
 result2 = await launch_subagent(
     goal=f"Send renewal reminders to the following members: {result}",
-    context={"app_access_token": token, "api_info": "Use send_reminder with member_id and message parameters"}
+    context={
+        "app_access_token": token,
+        "send_reminder_api_doc": {"app_name": "club", "api_name": "send_reminder", "method": "POST",
+            "parameters": [{"name": "access_token", "type": "string", "required": True},
+                           {"name": "member_id", "type": "integer", "required": True},
+                           {"name": "message", "type": "string", "required": True}]}
+    }
 )
 print(f"Action result: {result2}")
 
