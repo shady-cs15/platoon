@@ -429,6 +429,7 @@ class AppWorldRecursiveCodeExecutor(AppWorldCodeExecutor):
             self.current_task_is_subtask = True
         else:
             self.current_task_is_subtask = False
+        self._subagent_success_threshold = subagent_success_threshold
         self._launched_subagent_ids_this_step: set[str] = set()
         self._subagent_success_by_child_this_step: dict[str, float] = {}
 
