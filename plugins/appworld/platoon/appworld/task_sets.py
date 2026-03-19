@@ -69,6 +69,48 @@ CHALLENGE_DEV_TASK_IDS: tuple[str, ...] = (
     "4fab96f_3",
 )
 
+BORDERLINE_TRAIN_TASK_IDS: tuple[str, ...] = (
+    "692c77d_1",
+    "692c77d_2",
+    "692c77d_3",
+    "2a163ab_1",
+    "2a163ab_2",
+    "2a163ab_3",
+    "b7a9ee9_1",
+    "b7a9ee9_2",
+    "b7a9ee9_3",
+    "b0a8eae_1",
+    "b0a8eae_2",
+    "b0a8eae_3",
+    "e3d6c94_1",
+    "e3d6c94_2",
+    "e3d6c94_3",
+    "aa8502b_1",
+    "aa8502b_2",
+    "aa8502b_3",
+)
+
+BORDERLINE_DEV_TASK_IDS: tuple[str, ...] = (
+    "530b157_1",
+    "530b157_2",
+    "530b157_3",
+    "0d8a4ee_1",
+    "0d8a4ee_2",
+    "0d8a4ee_3",
+    "df61dc5_1",
+    "df61dc5_2",
+    "df61dc5_3",
+    "383cbac_1",
+    "383cbac_2",
+    "383cbac_3",
+    "23cf851_1",
+    "23cf851_2",
+    "23cf851_3",
+    "396c5a2_1",
+    "396c5a2_2",
+    "396c5a2_3",
+)
+
 CHALLENGE_TASK_IDS: frozenset[str] = frozenset(CHALLENGE_TRAIN_TASK_IDS + CHALLENGE_DEV_TASK_IDS)
 
 _VALID_TRAIN_SPLITS = {"train", "train_plus_dev"}
