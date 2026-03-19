@@ -38,6 +38,10 @@ class RolloutConfig:
     step_timeout: int = 300  # Per-step timeout (agent.act + env.step)
     return_dict: bool = False
     subagent_success_threshold: float | None = None  # When set, binarize subagent reward (1.0 if >= threshold, else 0.0)
+    rubric_model: str | None = None
+    rubric_base_url: str | None = None
+    rubric_api_key: str | None = None
+    rubric_api_key_env: str | None = None
     inference_params: InferenceParams = field(default_factory=InferenceParams)
 
     def __post_init__(self) -> None:

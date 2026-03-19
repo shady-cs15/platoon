@@ -25,7 +25,15 @@ async def run_rollout(task: Task, config: RolloutConfig) -> dict | TrajectoryCol
             base_url=config.model_endpoint,
             api_key=config.model_api_key,
         )
-        env = AppWorldEnv(task, timeout_seconds=config.step_timeout)
+        env = AppWorldEnv(
+            task,
+            timeout_seconds=config.step_timeout,
+            subagent_success_threshold=config.subagent_success_threshold,
+            rubric_model=config.rubric_model,
+            rubric_base_url=config.rubric_base_url,
+            rubric_api_key=config.rubric_api_key,
+            rubric_api_key_env=config.rubric_api_key_env,
+        )
         agent = AppWorldAgent(
             llm_client=llm_client,
             inference_params=config.inference_params,
@@ -88,7 +96,15 @@ async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | Tra
             base_url=config.model_endpoint,
             api_key=config.model_api_key,
         )
-        env = AppWorldRecursiveEnv(task, timeout_seconds=config.step_timeout)
+        env = AppWorldRecursiveEnv(
+            task,
+            timeout_seconds=config.step_timeout,
+            subagent_success_threshold=config.subagent_success_threshold,
+            rubric_model=config.rubric_model,
+            rubric_base_url=config.rubric_base_url,
+            rubric_api_key=config.rubric_api_key,
+            rubric_api_key_env=config.rubric_api_key_env,
+        )
         agent = AppWorldRecursiveAgent(
             llm_client=llm_client,
             inference_params=config.inference_params,
@@ -171,6 +187,11 @@ async def run_depth_aware_rollout(
             task,
             subagent_max_steps=per_subagent_max_steps,
             timeout_seconds=config.step_timeout,
+            subagent_success_threshold=config.subagent_success_threshold,
+            rubric_model=config.rubric_model,
+            rubric_base_url=config.rubric_base_url,
+            rubric_api_key=config.rubric_api_key,
+            rubric_api_key_env=config.rubric_api_key_env,
         )
         agent = AppWorldDepthAwareAgent(
             llm_client=llm_client,

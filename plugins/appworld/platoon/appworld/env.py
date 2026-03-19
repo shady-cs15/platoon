@@ -25,6 +25,7 @@ from platoon.episode.context import finish_message, error_message
 from platoon.envs.codeact.types import CodeActStep, CodeActObservation
 from platoon.utils.prompt_retriever import PromptRetriever
 from platoon.appworld.agent import AppWorldCodeActPromptBuilder
+from platoon.appworld.rubric_judge import configured_rubric_judge
 
 
 def _patch_freezegun_idempotent_stop() -> None:
@@ -490,12 +491,20 @@ class AppWorldEnv(CodeActEnv):
         code_executor: AppWorldCodeExecutor | None = None,
         timeout_seconds: int | None = DEFAULT_APPWORLD_TIMEOUT_SECONDS,
         subagent_success_threshold: float | None = None,
+        rubric_model: str | None = None,
+        rubric_base_url: str | None = None,
+        rubric_api_key: str | None = None,
+        rubric_api_key_env: str | None = None,
         **kwargs,
     ):
         if code_executor is None:
             code_executor = AppWorldCodeExecutor(task, timeout_seconds=timeout_seconds)
 
         self._subagent_success_threshold = subagent_success_threshold
+        self._rubric_model = rubric_model
+        self._rubric_base_url = rubric_base_url
+        self._rubric_api_key = rubric_api_key
+        self._rubric_api_key_env = rubric_api_key_env
         super().__init__(task, code_executor, **kwargs)
 
     @property
@@ -521,7 +530,13 @@ class AppWorldEnv(CodeActEnv):
                     err_message = error_message.get() or (self._state.history[-1].misc.get("error_message") if self._state.history else None)
 
                     rubric_context = f"We need to judge the performance of an agent on the task.\n\n# Agent Trajectory Info\n## Action History\n{action_history}\n\n## Final Message\n{final_message}\n\n## Error Message\n{err_message}"
-                    score, reason = await rubric_checklist.aevaluate(include_reason=True, context=rubric_context)
+                    async with configured_rubric_judge(
+                        model=self._rubric_model,
+                        base_url=self._rubric_base_url,
+                        api_key=self._rubric_api_key,
+                        api_key_env=self._rubric_api_key_env,
+                    ):
+                        score, reason = await rubric_checklist.aevaluate(include_reason=True, context=rubric_context)
 
                     reward_misc["reason"] = reason
                     reward_misc["rubric_dict"] = rubric_checklist.to_dict()
@@ -548,6 +563,11 @@ class AppWorldEnv(CodeActEnv):
         return type(self)(
             task,
             code_executor=code_executor,
+            subagent_success_threshold=self._subagent_success_threshold,
+            rubric_model=self._rubric_model,
+            rubric_base_url=self._rubric_base_url,
+            rubric_api_key=self._rubric_api_key,
+            rubric_api_key_env=self._rubric_api_key_env,
         )
     
 
@@ -676,5 +696,9 @@ class AppWorldDepthAwareEnv(AppWorldRecursiveEnv):
             code_executor=code_executor,
             subagent_max_steps=self._subagent_max_steps,
             subagent_success_threshold=self._subagent_success_threshold,
+            rubric_model=self._rubric_model,
+            rubric_base_url=self._rubric_base_url,
+            rubric_api_key=self._rubric_api_key,
+            rubric_api_key_env=self._rubric_api_key_env,
         )
     
