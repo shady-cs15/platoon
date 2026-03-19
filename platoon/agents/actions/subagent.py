@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Any, cast
 
 from platoon.agents.base import ForkableAgent
@@ -9,7 +10,21 @@ from platoon.episode.trajectory import BudgetExceededError
 from platoon.utils.span_profile import profile_span
 
 
-async def launch_subagent(goal: str, max_steps: int = 15, task_misc: dict | None = None, verbose: bool = True) -> Any:
+def _format_context(context: dict) -> str:
+    """Format a context dict into a readable string to append to the subagent goal."""
+    parts = []
+    for key, value in context.items():
+        if isinstance(value, str):
+            parts.append(f"- {key}: {value}")
+        else:
+            try:
+                parts.append(f"- {key}: {json.dumps(value)}")
+            except (TypeError, ValueError):
+                parts.append(f"- {key}: {value!r}")
+    return "\n".join(parts)
+
+
+async def launch_subagent(goal: str, max_steps: int = 15, task_misc: dict | None = None, context: dict | None = None, verbose: bool = True) -> Any:
     """Launch a subagent to solve a task.
 
     Args:
