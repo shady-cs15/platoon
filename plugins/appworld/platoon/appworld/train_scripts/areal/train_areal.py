@@ -16,14 +16,18 @@ from platoon.train.areal.workflows import StepWiseArealWorkflow
 class AppWorldArealTrainerConfig(PlatoonArealRLTrainerConfig):
     recursive: bool = False
     depth_aware: bool = False
-    delegation_bonus_unconditional_weight: float = 1.0  # 1.0 = fully unconditional (legacy), 0.0 = fully gated on success
+    delegation_bonus_gated_weight: float = 0.3
+    delegation_bonus_unconditional_weight: float = 0.1
     train_split: str = "train"
     eval_split: str = "dev"
     task_filter: str = "none"
 
 
-def make_reward_processor(unconditional_weight: float = 1.0):
-    """Create a reward processor with configurable delegation bonus gating."""
+def make_reward_processor(
+    gated_weight: float = 0.3,
+    unconditional_weight: float = 0.1,
+):
+    """Create a reward processor with separate gated and ungated delegation bonus terms."""
     def reward_processor(traj: dict) -> tuple[float, dict]:
         rewards_dict = {}
         for step in traj["steps"]:
@@ -39,7 +43,8 @@ def make_reward_processor(unconditional_weight: float = 1.0):
         launched = rewards_dict.get("reward/subagent_launched", 0.0)
         if launched > 0:
             subagent_success_rate = rewards_dict.get("reward/subagent_succeeded", 0.0) / launched
-            score += 0.4 * subagent_success_rate
+            score += gated_weight * success_reward * subagent_success_rate
+            score += unconditional_weight * subagent_success_rate
         return score, rewards_dict
     return reward_processor
 
@@ -54,7 +59,10 @@ def main(args):
     else:
         rollout_fn = run_rollout
 
-    reward_processor = make_reward_processor(config.delegation_bonus_unconditional_weight)
+    reward_processor = make_reward_processor(
+        gated_weight=config.delegation_bonus_gated_weight,
+        unconditional_weight=config.delegation_bonus_unconditional_weight,
+    )
 
     selection_summary = summarize_task_selection()
     train_task_ids = resolve_train_task_ids(config.train_split, config.task_filter)
