@@ -29,6 +29,32 @@ from platoon.utils.areal_data_processing import get_train_data_for_trajectory_co
 logger = logging.getLogger(__name__)
 
 
+def _compute_depth_level_loo_baselines(train_data: dict) -> torch.Tensor:
+    """Compute per-datum leave-one-out baselines within each trajectory depth."""
+    if "traj_depth" not in train_data or "traj_start" not in train_data:
+        raise ValueError("Depth-level LOO baseline requires traj_depth and traj_start in train_data.")
+
+    traj_start = train_data["traj_start"].bool()
+    if traj_start.sum() <= 1:
+        return torch.zeros_like(train_data["rewards"])
+
+    traj_rewards = train_data["rewards"][traj_start]
+    traj_depths = train_data["traj_depth"][traj_start]
+
+    baselines = torch.zeros_like(traj_rewards)
+    for depth in torch.unique(traj_depths):
+        mask = traj_depths == depth
+        count = int(mask.sum().item())
+        if count <= 1:
+            baselines[mask] = 0.0
+            continue
+        depth_rewards = traj_rewards[mask]
+        baselines[mask] = (depth_rewards.sum() - depth_rewards) / (count - 1)
+
+    traj_indices = torch.cumsum(traj_start.int(), dim=0) - 1
+    return baselines[traj_indices]
+
+
 class StepWiseArealWorkflow(RolloutWorkflow):
     """Workflow that runs rollouts and extracts step-wise training data.
 
@@ -93,7 +119,9 @@ class StepWiseArealWorkflow(RolloutWorkflow):
         mean_unprocessed_reward = torch.mean(train_data["rewards"])
 
         # Center advantages
-        if self.config.leave_one_out_baseline and len(results) > 1:
+        if self.config.depth_level_leave_one_out_baseline:
+            train_data["rewards"] = train_data["rewards"] - _compute_depth_level_loo_baselines(train_data)
+        elif self.config.leave_one_out_baseline and len(results) > 1:
             # Leave-one-out: each rollout's baseline is the mean of all other rollouts' rewards
             task_rewards = train_data["task_reward"]  # shape [N]
             N = len(task_rewards)
@@ -105,6 +133,10 @@ class StepWiseArealWorkflow(RolloutWorkflow):
             train_data["rewards"] = train_data["rewards"] - per_datum_baselines
         else:
             train_data["rewards"] = train_data["rewards"] - torch.mean(train_data["task_reward"])
+
+        if not self.config.depth_level_weighting and self.config.depth_level_discount_gamma is None:
+            train_data.pop("traj_depth", None)
+            train_data.pop("traj_start", None)
 
         tracker = stats_tracker.get(self.stats_scope)
 
@@ -236,6 +268,7 @@ class StepWiseArealWorkflow(RolloutWorkflow):
         completions = self.proxy_server.session_cache[session.session_id].completions
         use_depth_weighting = self.config.depth_level_weighting
         use_depth_discount = self.config.depth_level_discount_gamma is not None
+        use_depth_loo_baseline = self.config.depth_level_leave_one_out_baseline
 
         # Process data
         train_data = get_train_data_for_trajectory_collection(
@@ -246,8 +279,8 @@ class StepWiseArealWorkflow(RolloutWorkflow):
             self.reward_processor,
             self.merge_prefixes,
             concat_fn=concat_padded_tensors,
-            include_traj_depth=use_depth_weighting or use_depth_discount,
-            include_traj_start=use_depth_weighting,
+            include_traj_depth=use_depth_weighting or use_depth_discount or use_depth_loo_baseline,
+            include_traj_start=use_depth_weighting or use_depth_loo_baseline,
         )
 
         if train_data is None:
