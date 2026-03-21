@@ -41,7 +41,7 @@ gconfig:
 workflow_config:
   rollout_config:
     model_name: ${actor.path}
-    rubric_model: openrouter/qwen/qwen3.5-9b
+    rubric_model: openrouter/qwen/qwen3.5-35b-a3b
     rubric_base_url: https://openrouter.ai/api/v1
     rubric_api_key_env: OPENROUTER_API_KEY
     max_steps: 75

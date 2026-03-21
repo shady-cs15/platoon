@@ -80,12 +80,20 @@ async def abinary_judge_subtask(
 
     llm_client = create_llm_client(api_key=resolved_api_key, model=model, base_url=base_url)
     system_prompt = (
-        "You are a strict evaluator for autonomous agent subtasks. "
+        "You are an evaluator for autonomous agent subtasks. "
         "Decide whether the agent successfully completed the assigned subtask. "
         "Return JSON only with keys: success and reasoning. "
-        "success must be exactly 1.0 for success or 0.0 for failure. "
-        "Mark success only if the assigned subtask was fully completed based on the evidence. "
-        "If the output is partial, uncertain, inconsistent, incomplete, or likely missed items/pages/entities, return 0.0."
+        "success must be exactly 1.0 for success or 0.0 for failure.\n\n"
+        "Evaluation rules:\n"
+        "- If the Final Message reports concrete results (specific IDs, counts, names) that are consistent with the goal, return 1.0 "
+        "even if the Action History is incomplete or shows intermediate errors that were recovered from.\n"
+        "- If the goal asked to perform an action and the items were already in the desired state (e.g. already liked, already deleted), that counts as success.\n"
+        "- Return 0.0 only when there is clear evidence of failure: the Final Message contradicts itself "
+        "(e.g. claims success but reports 0 items acted on, or lists no IDs), "
+        "the results are fabricated or simulated rather than from real API calls, "
+        "the Error Message indicates an unrecoverable failure, "
+        "or the Final Message explicitly reports failure/partial completion.\n"
+        "- Do NOT penalize for intermediate errors, retries, or imperfect code if the final outcome matches the goal."
     )
     user_prompt = (
         f"# Subtask Goal\n{goal}\n\n"
