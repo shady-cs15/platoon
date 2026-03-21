@@ -1,5 +1,5 @@
 experiment_name: recursive-agents
-trial_name: appworld-challenge-recursive-sat-1
+trial_name: appworld-challenge-recursive-sat-2
 
 seed: 343
 total_train_epochs: 100
@@ -45,7 +45,7 @@ workflow_config:
     rubric_base_url: https://openrouter.ai/api/v1
     rubric_api_key_env: OPENROUTER_API_KEY
     max_steps: 75
-    output_dir: /fsx/areal/experiments/appworld-challenge-recursive-sat-1
+    output_dir: /fsx/areal/experiments/appworld-challenge-recursive-sat-2
     verbose: True
     train: true
     timeout: 2700
@@ -55,7 +55,8 @@ workflow_config:
         max_completion_tokens: 2048
   group_size: 8
   use_subprocesses: true
-  leave_one_out_baseline: True  # Use leave-one-out baseline for advantage centering
+  leave_one_out_baseline: False  # Use leave-one-out baseline for advantage centering
+  depth_level_leave_one_out_baseline: True # Use depth level leave one out baseline for advantage centering
   depth_level_weighting: True  # Weight trajectories inversely by depth-level frequency
 
 # CISPO loss function configuration (matches tinker settings)
