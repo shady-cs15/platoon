@@ -5,8 +5,8 @@ seed: 343
 total_train_epochs: 100
 tokenizer_path: ${actor.path}
 depth_aware: true
-delegation_bonus_gated_weight: 0.3
-delegation_bonus_unconditional_weight: 0.1
+delegation_bonus_gated_weight: 0.4
+delegation_bonus_unconditional_weight: 0.0
 train_split: train_plus_dev
 task_filter: challenge
 eval_split: test_challenge

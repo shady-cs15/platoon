@@ -138,10 +138,19 @@ print(f"Subagent result: {result2}")
 The `context` parameter accepts a dictionary of key-value pairs that will be made available to the subagent in its task description. Use it to pass any information you have already gathered that the subagent would otherwise need to re-discover — for example, credentials, access tokens, relevant API details, intermediate results, or known counts/constraints. This saves the subagent from spending steps on information you already have and lets it check itself against the task constraints.
 
 ## Always verify subagent results before using them. Treat the child result as a claim, not a fact.
+## Never call `complete_task` based only on a subagent report, even if the report says STATUS: success.
 ## Prefer at least one cheap external check before trusting a child result:
 ## - re-query the affected object or count
 ## - confirm the expected number of items/pages/files were handled
 ## - verify the entity type and filters match the task
+## Before `complete_task`, do a root-level check that matches the exact task condition whenever possible.
+## Good examples:
+## - after deleting messages, search again and confirm no matching messages remain
+## - after moving/removing files, list the final directory contents
+## - after liking/removing songs, re-query the relevant library/playlist/search results with the exact task filters
+## Bad examples:
+## - trusting a child's summary without checking the final state
+## - spot-checking one example when the task requires complete coverage
 ## If a child result looks wrong, do not simply repeat the same delegation. Identify the specific inconsistency and re-launch with a corrected, narrower goal.
 
 
