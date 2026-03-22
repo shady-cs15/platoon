@@ -1,12 +1,14 @@
 experiment_name: recursive-agents
-trial_name: appworld-curriculum-linear-sat-0
+trial_name: appworld-challenge-recursive-sat-1
 
 seed: 343
 total_train_epochs: 100
 tokenizer_path: ${actor.path}
-recursive: false
+depth_aware: true
+delegation_bonus_gated_weight: 0.4
+delegation_bonus_unconditional_weight: 0.0
 train_split: train_plus_dev
-task_filter: simple
+task_filter: challenge
 eval_split: test_challenge
 
 
@@ -23,7 +25,7 @@ allocation_mode: sglang:d4p1t1+d4p1t1
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 16
+  max_concurrent_rollouts: 8
   queue_size: null
   consumer_batch_size: ${train_dataset.batch_size}
   max_head_offpolicyness: 3
@@ -39,20 +41,23 @@ gconfig:
 workflow_config:
   rollout_config:
     model_name: ${actor.path}
-    rubric_model: openrouter/qwen/qwen3.5-35b-a3b
+    rubric_model: openrouter/qwen/qwen3.5-27b
     rubric_base_url: https://openrouter.ai/api/v1
     rubric_api_key_env: OPENROUTER_API_KEY
     max_steps: 75
-    output_dir: /fsx/areal/experiments/appworld-curriculum-linear-sat-0
+    output_dir: /fsx/areal/experiments/appworld-challenge-recursive-sat-1
     verbose: True
     train: true
-    timeout: 900
-    step_timeout: 600
+    timeout: 2700
+    step_timeout: 2700
     inference_params:
-      temperature: 1.0
-      max_completion_tokens: 2048
+        temperature: 1.0
+        max_completion_tokens: 2048
   group_size: 8
   use_subprocesses: true
+  leave_one_out_baseline: True  # Use leave-one-out baseline for advantage centering
+  depth_level_leave_one_out_baseline: False # Use depth level leave one out baseline for advantage centering
+  depth_level_weighting: True  # Weight trajectories inversely by depth-level frequency
 
 # CISPO loss function configuration (matches tinker settings)
 loss_fn_config:
