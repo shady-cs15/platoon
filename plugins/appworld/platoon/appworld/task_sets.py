@@ -112,10 +112,11 @@ BORDERLINE_DEV_TASK_IDS: tuple[str, ...] = (
 )
 
 CHALLENGE_TASK_IDS: frozenset[str] = frozenset(CHALLENGE_TRAIN_TASK_IDS + CHALLENGE_DEV_TASK_IDS)
+BORDERLINE_TASK_IDS: frozenset[str] = frozenset(BORDERLINE_TRAIN_TASK_IDS + BORDERLINE_DEV_TASK_IDS)
 
 _VALID_TRAIN_SPLITS = {"train", "train_plus_dev"}
 _VALID_EVAL_SPLITS = {"dev", "test_normal", "test_challenge"}
-_VALID_FILTERS = {"none", "challenge"}
+_VALID_FILTERS = {"none", "challenge", "borderline", "simple"}
 
 
 def resolve_train_task_ids(train_split: str, task_filter: str) -> list[str]:
@@ -154,4 +155,8 @@ def _apply_filter(task_ids: list[str], task_filter: str) -> list[str]:
         return list(task_ids)
     if task_filter == "challenge":
         return [task_id for task_id in task_ids if task_id in CHALLENGE_TASK_IDS]
+    if task_filter == "borderline":
+        return [task_id for task_id in task_ids if task_id in BORDERLINE_TASK_IDS]
+    if task_filter == "simple":
+        return [task_id for task_id in task_ids if task_id not in CHALLENGE_TASK_IDS and task_id not in BORDERLINE_TASK_IDS]
     raise ValueError(f"Invalid task_filter={task_filter!r}.")
