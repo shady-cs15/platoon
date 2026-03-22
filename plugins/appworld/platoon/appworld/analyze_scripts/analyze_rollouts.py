@@ -27,7 +27,8 @@ def analyze(experiment_dir):
         f"{'spawn':>5} {'s_ok':>4} {'s_rate':>6} | "
         f"{'no_sp':>5} {'n_ok':>4} {'n_rate':>6} | "
         f"{'child':>5} {'c_ok':>4} {'c_rate':>6} {'c_mean':>6} | "
-        f"{'tasks':>5} {'sp+':>3} {'sp+%':>4} {'ns+':>3} {'ns+%':>4} {'tie':>3} {'tie%':>4}"
+        f"{'tasks':>5} {'t_ok':>4} {'t_rate':>6} {'r_rate':>6} | "
+        f"{'sp+':>3} {'sp+%':>4} {'ns+':>3} {'ns+%':>4} {'tie':>3} {'tie%':>4}"
     )
     print(header)
     print("-" * len(header))
@@ -125,12 +126,23 @@ def analyze(experiment_dir):
         ns_pct = f"{nosp_win/max(n_tasks,1)*100:.0f}%"
         ti_pct = f"{tie/max(n_tasks,1)*100:.0f}%"
 
+        # --- Task success rate & rollout success rate ---
+        tasks_with_success = sum(
+            1 for rollouts in task_groups.values()
+            if any(r["reward"] >= 1.0 for r in rollouts)
+        )
+        total_root_rollouts = ts + tn
+        total_root_successes = spawn_s + nospawn_s
+        task_sr = f"{tasks_with_success/max(n_tasks,1)*100:.0f}%"
+        rollout_sr = f"{total_root_successes/max(total_root_rollouts,1)*100:.1f}%"
+
         print(
             f"{step:>4} | "
             f"{ts:>5} {spawn_s:>4} {sr:>6} | "
             f"{tn:>5} {nospawn_s:>4} {nr:>6} | "
             f"{n_children:>5} {c_succ:>4} {cr:>6} {c_mean:>6.3f} | "
-            f"{n_tasks:>5} {sp_win:>3} {sp_pct:>4} {nosp_win:>3} {ns_pct:>4} {tie:>3} {ti_pct:>4}"
+            f"{n_tasks:>5} {tasks_with_success:>4} {task_sr:>6} {rollout_sr:>6} | "
+            f"{sp_win:>3} {sp_pct:>4} {nosp_win:>3} {ns_pct:>4} {tie:>3} {ti_pct:>4}"
         )
 
 
