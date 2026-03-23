@@ -1,5 +1,5 @@
 experiment_name: recursive-agents
-trial_name: appworld-curriculum-recursive-sat-2
+trial_name: appworld-curriculum-recursive-sat-1
 
 seed: 343
 total_train_epochs: 100
@@ -45,7 +45,7 @@ workflow_config:
     rubric_base_url: https://openrouter.ai/api/v1
     rubric_api_key_env: OPENROUTER_API_KEY
     max_steps: 75
-    output_dir: /fsx/areal/experiments/appworld-curriculum-recursive-sat-2
+    output_dir: /fsx/areal/experiments/appworld-curriculum-recursive-sat-1
     verbose: True
     train: true
     timeout: 2700
