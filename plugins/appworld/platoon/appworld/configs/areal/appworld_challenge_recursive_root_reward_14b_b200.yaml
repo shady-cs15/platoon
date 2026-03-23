@@ -1,5 +1,5 @@
 experiment_name: recursive-agents
-trial_name: appworld-challenge-recursive-sat-2
+trial_name: appworld-challenge-recursive-root-reward-sat-0
 
 seed: 343
 total_train_epochs: 100
@@ -7,6 +7,7 @@ tokenizer_path: ${actor.path}
 depth_aware: true
 delegation_bonus_gated_weight: 0.4
 delegation_bonus_unconditional_weight: 0.0
+root_reward_propagation: true
 train_split: train_plus_dev
 task_filter: challenge
 eval_split: test_challenge
@@ -45,7 +46,7 @@ workflow_config:
     rubric_base_url: https://openrouter.ai/api/v1
     rubric_api_key_env: OPENROUTER_API_KEY
     max_steps: 75
-    output_dir: /fsx/areal/experiments/appworld-challenge-recursive-sat-2
+    output_dir: /fsx/areal/experiments/appworld-challenge-recursive-root-reward-sat-0
     verbose: True
     train: true
     timeout: 2700
