@@ -56,7 +56,7 @@ workflow_config:
   group_size: 8
   use_subprocesses: true
   leave_one_out_baseline: False  # Use leave-one-out baseline for advantage centering
-  depth_level_leave_one_out_baseline: True # Use depth level leave one out baseline for advantage centering
+  depth_level_leave_one_out_baseline: False # Use depth level leave one out baseline for advantage centering
   depth_level_weighting: True  # Weight trajectories inversely by depth-level frequency
 
 # CISPO loss function configuration (matches tinker settings)
