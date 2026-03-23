@@ -18,6 +18,7 @@ class AppWorldArealTrainerConfig(PlatoonArealRLTrainerConfig):
     depth_aware: bool = False
     delegation_bonus_gated_weight: float = 0.3
     delegation_bonus_unconditional_weight: float = 0.1
+    root_reward_propagation: bool = False
     train_split: str = "train"
     eval_split: str = "dev"
     task_filter: str = "none"
@@ -26,8 +27,16 @@ class AppWorldArealTrainerConfig(PlatoonArealRLTrainerConfig):
 def make_reward_processor(
     gated_weight: float = 0.3,
     unconditional_weight: float = 0.1,
+    root_reward_propagation: bool = False,
 ):
-    """Create a reward processor with separate gated and ungated delegation bonus terms."""
+    """Create a reward processor with separate gated and ungated delegation bonus terms.
+
+    Args:
+        gated_weight: Delegation bonus multiplied by root success (only rewarded when root succeeds).
+        unconditional_weight: Delegation bonus regardless of root success.
+        root_reward_propagation: When True, delegation bonus is binary (applied whenever
+            delegation happened) since subagent LLM judges are skipped.
+    """
     def reward_processor(traj: dict) -> tuple[float, dict]:
         rewards_dict = {}
         for step in traj["steps"]:
@@ -42,9 +51,14 @@ def make_reward_processor(
 
         launched = rewards_dict.get("reward/subagent_launched", 0.0)
         if launched > 0:
-            subagent_success_rate = rewards_dict.get("reward/subagent_succeeded", 0.0) / launched
-            score += gated_weight * success_reward * subagent_success_rate
-            score += unconditional_weight * subagent_success_rate
+            if root_reward_propagation:
+                # No per-subagent scores available; binary delegation bonus.
+                score += gated_weight * success_reward
+                score += unconditional_weight
+            else:
+                subagent_success_rate = rewards_dict.get("reward/subagent_succeeded", 0.0) / launched
+                score += gated_weight * success_reward * subagent_success_rate
+                score += unconditional_weight * subagent_success_rate
         return score, rewards_dict
     return reward_processor
 
@@ -59,9 +73,15 @@ def main(args):
     else:
         rollout_fn = run_rollout
 
+    # Propagate root_reward_propagation to workflow config and rollout config
+    if config.root_reward_propagation:
+        config.workflow_config.root_reward_propagation = True
+        config.workflow_config.rollout_config.skip_subtask_rubric = True
+
     reward_processor = make_reward_processor(
         gated_weight=config.delegation_bonus_gated_weight,
         unconditional_weight=config.delegation_bonus_unconditional_weight,
+        root_reward_propagation=config.root_reward_propagation,
     )
 
     selection_summary = summarize_task_selection()

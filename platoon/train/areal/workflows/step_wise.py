@@ -269,6 +269,7 @@ class StepWiseArealWorkflow(RolloutWorkflow):
         use_depth_weighting = self.config.depth_level_weighting
         use_depth_discount = self.config.depth_level_discount_gamma is not None
         use_depth_loo_baseline = self.config.depth_level_leave_one_out_baseline
+        use_root_propagation = self.config.root_reward_propagation
 
         # Process data
         train_data = get_train_data_for_trajectory_collection(
@@ -281,6 +282,7 @@ class StepWiseArealWorkflow(RolloutWorkflow):
             concat_fn=concat_padded_tensors,
             include_traj_depth=use_depth_weighting or use_depth_discount or use_depth_loo_baseline,
             include_traj_start=use_depth_weighting or use_depth_loo_baseline,
+            root_reward_propagation=use_root_propagation,
         )
 
         if train_data is None:

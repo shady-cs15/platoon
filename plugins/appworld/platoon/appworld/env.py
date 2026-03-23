@@ -494,6 +494,7 @@ class AppWorldEnv(CodeActEnv):
         rubric_base_url: str | None = None,
         rubric_api_key: str | None = None,
         rubric_api_key_env: str | None = None,
+        skip_subtask_rubric: bool = False,
         **kwargs,
     ):
         if code_executor is None:
@@ -504,6 +505,7 @@ class AppWorldEnv(CodeActEnv):
         self._rubric_base_url = rubric_base_url
         self._rubric_api_key = rubric_api_key
         self._rubric_api_key_env = rubric_api_key_env
+        self._skip_subtask_rubric = skip_subtask_rubric
         super().__init__(task, code_executor, **kwargs)
 
     @property
@@ -520,30 +522,36 @@ class AppWorldEnv(CodeActEnv):
 
         if self._state.finished:
             if isinstance(self._task, SubTask) and self._task.parent_tasks:
-                try:
-                    prompt_builder = AppWorldCodeActPromptBuilder()
-                    action_history = prompt_builder.build_action_history_description(await self.observe())
-                    # Pull messages from episode-level context vars first; fall back to last step if available
-                    final_message = finish_message.get() or (self._state.history[-1].misc.get("finish_message") if self._state.history else None)
-                    err_message = error_message.get() or (self._state.history[-1].misc.get("error_message") if self._state.history else None)
-
-                    score, reason = await abinary_judge_subtask(
-                        goal=self._task.goal,
-                        action_history=action_history,
-                        final_message=final_message,
-                        err_message=err_message,
-                        model=self._rubric_model,
-                        base_url=self._rubric_base_url,
-                        api_key=self._rubric_api_key,
-                        api_key_env=self._rubric_api_key_env,
-                    )
-
-                    reward_misc["reason"] = reason
-                    reward_misc["rubric_raw_score"] = score
-
-                except Exception as e:
-                    reward_misc["reason"] = f"Failed binary subtask evaluation: {e}"
+                if self._skip_subtask_rubric:
+                    # Root reward propagation mode: skip LLM judge, reward will be
+                    # overridden with root reward during data processing.
+                    reward_misc["reason"] = "Subtask rubric skipped (root reward propagation mode)."
                     score = 0.
+                else:
+                    try:
+                        prompt_builder = AppWorldCodeActPromptBuilder()
+                        action_history = prompt_builder.build_action_history_description(await self.observe())
+                        # Pull messages from episode-level context vars first; fall back to last step if available
+                        final_message = finish_message.get() or (self._state.history[-1].misc.get("finish_message") if self._state.history else None)
+                        err_message = error_message.get() or (self._state.history[-1].misc.get("error_message") if self._state.history else None)
+
+                        score, reason = await abinary_judge_subtask(
+                            goal=self._task.goal,
+                            action_history=action_history,
+                            final_message=final_message,
+                            err_message=err_message,
+                            model=self._rubric_model,
+                            base_url=self._rubric_base_url,
+                            api_key=self._rubric_api_key,
+                            api_key_env=self._rubric_api_key_env,
+                        )
+
+                        reward_misc["reason"] = reason
+                        reward_misc["rubric_raw_score"] = score
+
+                    except Exception as e:
+                        reward_misc["reason"] = f"Failed binary subtask evaluation: {e}"
+                        score = 0.
             else:
                 try:
                     score = float(self.code_executor.world.evaluate(suppress_errors=False).to_dict()["success"])
@@ -564,6 +572,7 @@ class AppWorldEnv(CodeActEnv):
             rubric_base_url=self._rubric_base_url,
             rubric_api_key=self._rubric_api_key,
             rubric_api_key_env=self._rubric_api_key_env,
+            skip_subtask_rubric=self._skip_subtask_rubric,
         )
     
 
@@ -696,5 +705,6 @@ class AppWorldDepthAwareEnv(AppWorldRecursiveEnv):
             rubric_base_url=self._rubric_base_url,
             rubric_api_key=self._rubric_api_key,
             rubric_api_key_env=self._rubric_api_key_env,
+            skip_subtask_rubric=self._skip_subtask_rubric,
         )
     

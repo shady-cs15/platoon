@@ -104,6 +104,7 @@ async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | Tra
             rubric_base_url=config.rubric_base_url,
             rubric_api_key=config.rubric_api_key,
             rubric_api_key_env=config.rubric_api_key_env,
+            skip_subtask_rubric=config.skip_subtask_rubric,
         )
         agent = AppWorldRecursiveAgent(
             llm_client=llm_client,
@@ -192,6 +193,7 @@ async def run_depth_aware_rollout(
             rubric_base_url=config.rubric_base_url,
             rubric_api_key=config.rubric_api_key,
             rubric_api_key_env=config.rubric_api_key_env,
+            skip_subtask_rubric=config.skip_subtask_rubric,
         )
         agent = AppWorldDepthAwareAgent(
             llm_client=llm_client,
