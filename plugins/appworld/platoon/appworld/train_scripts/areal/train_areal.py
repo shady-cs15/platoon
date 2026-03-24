@@ -117,7 +117,6 @@ def main(args):
     # The reward_processor then naturally gives leaf agents the base success
     # (no delegation bonus) and intermediate agents the full reward (with bonus).
     if config.root_reward_propagation:
-        config.workflow_config.rollout_config.skip_subtask_rubric = True
         config.workflow_config.rollout_config.propagate_root_success = True
 
     reward_processor = make_reward_processor(

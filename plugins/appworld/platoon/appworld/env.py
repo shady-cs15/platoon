@@ -494,7 +494,7 @@ class AppWorldEnv(CodeActEnv):
         rubric_base_url: str | None = None,
         rubric_api_key: str | None = None,
         rubric_api_key_env: str | None = None,
-        skip_subtask_rubric: bool = False,
+        propagate_root_success: bool = False,
         **kwargs,
     ):
         if code_executor is None:
@@ -505,7 +505,7 @@ class AppWorldEnv(CodeActEnv):
         self._rubric_base_url = rubric_base_url
         self._rubric_api_key = rubric_api_key
         self._rubric_api_key_env = rubric_api_key_env
-        self._skip_subtask_rubric = skip_subtask_rubric
+        self._propagate_root_success = propagate_root_success
         super().__init__(task, code_executor, **kwargs)
 
     @property
@@ -522,10 +522,10 @@ class AppWorldEnv(CodeActEnv):
 
         if self._state.finished:
             if isinstance(self._task, SubTask) and self._task.parent_tasks:
-                if self._skip_subtask_rubric:
-                    # Root reward propagation mode: skip LLM judge, reward will be
-                    # overridden with root reward during data processing.
-                    reward_misc["reason"] = "Subtask rubric skipped (root reward propagation mode)."
+                if self._propagate_root_success:
+                    # Root reward propagation: skip LLM judge, reward will be
+                    # overwritten with root reward after rollout completes.
+                    reward_misc["reason"] = "Subtask rubric skipped (propagate_root_success)."
                     score = 0.
                 else:
                     try:
@@ -572,7 +572,7 @@ class AppWorldEnv(CodeActEnv):
             rubric_base_url=self._rubric_base_url,
             rubric_api_key=self._rubric_api_key,
             rubric_api_key_env=self._rubric_api_key_env,
-            skip_subtask_rubric=self._skip_subtask_rubric,
+            propagate_root_success=self._propagate_root_success,
         )
     
 
@@ -705,6 +705,6 @@ class AppWorldDepthAwareEnv(AppWorldRecursiveEnv):
             rubric_base_url=self._rubric_base_url,
             rubric_api_key=self._rubric_api_key,
             rubric_api_key_env=self._rubric_api_key_env,
-            skip_subtask_rubric=self._skip_subtask_rubric,
+            propagate_root_success=self._propagate_root_success,
         )
     
