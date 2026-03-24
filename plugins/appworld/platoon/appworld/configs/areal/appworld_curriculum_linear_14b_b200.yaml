@@ -6,8 +6,16 @@ total_train_epochs: 100
 tokenizer_path: ${actor.path}
 recursive: false
 train_split: train_plus_dev
-task_filter: simple
+task_filter: simple  # overridden by curriculum
 eval_split: test_challenge
+curriculum_filters:
+  - simple
+  - borderline
+  - challenge
+curriculum_steps:
+  - 100
+  - 100
+  - 250
 
 
 cluster:

@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from collections.abc import Callable
 from copy import deepcopy
 
 import torch
@@ -225,16 +226,57 @@ class PlatoonArealRLTrainer:
         # Increase timeout for long training runs
         dist.distributed_c10d._set_pg_timeout(datetime.timedelta(seconds=7200), self.actor.data_parallel_group)
 
-    def train(self, workflow: RolloutWorkflow, eval_workflow: RolloutWorkflow):
-        """Run the training loop."""
+    def replace_train_dataset(self, new_dataset: Dataset) -> None:
+        """Replace the training dataset mid-training for curriculum learning."""
+        self.train_dataset = new_dataset
+        config = self.config
+        if self.use_lora:
+            num_replicas = 1
+            rank = 0
+        else:
+            num_replicas = self.actor.data_parallel_world_size
+            rank = self.actor.data_parallel_rank
+        self.train_dataloader = StatefulDataLoader(
+            new_dataset,
+            batch_size=config.train_dataset.batch_size // num_replicas,
+            sampler=DistributedSampler(
+                new_dataset,
+                num_replicas=num_replicas,
+                rank=rank,
+                shuffle=config.train_dataset.shuffle,
+                drop_last=config.train_dataset.drop_last,
+            ),
+            num_workers=config.train_dataset.num_workers,
+            collate_fn=lambda x: x,
+        )
+
+    def train(
+        self,
+        workflow: RolloutWorkflow,
+        eval_workflow: RolloutWorkflow,
+        on_step_callback: Callable[["PlatoonArealRLTrainer", int], None] | None = None,
+    ):
+        """Run the training loop.
+
+        Args:
+            workflow: Training rollout workflow.
+            eval_workflow: Evaluation rollout workflow.
+            on_step_callback: Optional callback invoked at the start of each step
+                with (trainer, global_step). Used by curriculum learning to swap
+                the training dataset at step boundaries.
+        """
         config = self.config
         start_step = self.recover_info.last_step_info.next().global_step if self.recover_info is not None else 0
 
         total_epochs = config.total_train_epochs
         steps_per_epoch = len(self.train_dataloader)
         max_steps = total_epochs * steps_per_epoch
+        if config.max_train_steps is not None:
+            max_steps = config.max_train_steps
 
         for global_step in range(start_step, max_steps):
+            if on_step_callback is not None:
+                on_step_callback(self, global_step)
             epoch = global_step // steps_per_epoch
             step = global_step % steps_per_epoch
             step_info = StepInfo(

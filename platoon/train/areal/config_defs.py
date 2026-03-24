@@ -63,3 +63,4 @@ class PlatoonArealRLTrainerConfig(GRPOConfig):
     rollout: VariableBatchInferenceEngineConfig = field(default_factory=VariableBatchInferenceEngineConfig)
     actor: PPOActorConfig = field(default_factory=PPOActorConfig)
     loss_fn_config: LossFnConfig = field(default_factory=LossFnConfig)
+    max_train_steps: int | None = None  # Override epoch-based max steps (used by curriculum learning)
