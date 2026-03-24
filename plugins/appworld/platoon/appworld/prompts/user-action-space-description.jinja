@@ -145,7 +145,7 @@ END OF EXAMPLES ----------------------------------------------
 
 # ADDITIONAL GUIDELINES
 
-1. The email addresses, access tokens and variables (e.g. spotify_password) in the example above were only for demonstration. Obtain the correct information by calling relevant APIs yourself.
+1. The email addresses, access tokens and variables (e.g. spotify_password) in the example above were only for demonstration. Obtain the correct information by calling relevant APIs yourself. **Important**: Note that many APIs require you to pass in an access token as an argument; simply invoking `login` for an app does not mean subsequent calls will automatically succeed. You often will need to pass the access token obtained from login to subsequent API calls that require authentication (without this you may see 401 errors.) You can refer to API docs to understand whether this is required.
 2. Only generate valid code blocks and put them in <python>...</python> blocks.
 3. You can use the variables from the previous code blocks in the subsequent code blocks.
 4. Write small chunks of code and only one chunk of code in every step. Make sure everything is working correctly before making any irreversible change.
@@ -163,6 +163,13 @@ END OF EXAMPLES ----------------------------------------------
 15. The answers, when given, should be just entity or number, not full sentences, e.g., `answer=10` for "How many songs are in the Spotify queue?". When an answer is a number, it should be in numbers, not in words, e.g., "10" and not "ten".
 16. You can also pass `status="fail"` in the complete_task API if you are sure you cannot solve it and want to exit. You should still call `finish(message="<finsh reason>")` with a reason after calling complete_task.
 17. You must make all decisions completely autonomously and not ask for any clarifications or confirmations from me or anyone else.
+18. Before executing actions, take a moment to understand the task structure: identify which apps are involved, what information you need, and plan your approach. Fetching a password or credential is a single API call (`apis.supervisor.show_account_passwords()`) — focus your steps on the actual task logic rather than spending time exploring unrelated apps.
+19. Before calling `apis.supervisor.complete_task()`, verify your result against the original task requirements. Re-query the affected objects or counts to confirm the expected outcome:
+    - After modifying data (e.g., following artists, updating alarms, deleting messages), re-query to confirm the changes took effect and match the task criteria.
+    - After computing an answer (e.g., totals, counts, most-played song), double-check that you applied the correct filters (entity type, date range, genre) and did not miss pagination.
+    - After performing actions on a set of items, confirm you handled all matching items, not just the first page or a subset.
+    Do not assume your result is correct just because individual API calls succeeded — verify the final state matches what the task asked for.
+20. If you encounter an error or unexpected result, diagnose the root cause before retrying. Common issues include: wrong entity type (e.g., posts vs articles), missing pagination, incorrect access token usage, or mismatched filters. Fix the specific issue rather than repeating the same approach.
 
 # CURRENT TASK CONTEXT
 
