@@ -13,12 +13,12 @@ eval_split: dev
 cluster:
   n_nodes: 1
   n_gpus_per_node: 8
-  fileroot: /mnt/efs/tmp/areal/experiments
+  fileroot: /fsx/areal/experiments
   name_resolve:
     type: nfs
-    nfs_record_root: /mnt/efs/tmp/areal/name_resolve
+    nfs_record_root: /fsx/areal/name_resolve
 
-allocation_mode: sglang:d4p1t1+d2p1t1c2
+allocation_mode: sglang:d4p1t1+d4p1t1
 
 rollout:
   experiment_name: ${experiment_name}
@@ -43,7 +43,7 @@ workflow_config:
     rubric_base_url: https://openrouter.ai/api/v1
     rubric_api_key_env: OPENROUTER_API_KEY
     max_steps: 75
-    output_dir: /mnt/efs/tmp/areal/experiments/appworld-full-linear-sat-0
+    output_dir: /fsx/areal/experiments/appworld-full-linear-sat-0
     verbose: True
     train: true
     timeout: 900
@@ -126,11 +126,11 @@ sglang:
   dtype: ${actor.dtype}
   max_running_requests: null
   context_length: 40001
-  mem_fraction_static: 0.8
+  mem_fraction_static: 0.66
   enable_lora: ${actor.use_lora}
   max_lora_rank: ${actor.lora_rank}
   lora_target_modules: ${actor.target_modules}
-  #attention_backend: flashinfer # Uncomment for blackwell GPUs
+  attention_backend: flashinfer # Uncomment for blackwell GPUs
 
 # datasets
 train_dataset:
