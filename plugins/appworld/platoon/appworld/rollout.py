@@ -8,6 +8,7 @@ from platoon.episode.context import budget_tracker, current_trajectory_collectio
 from platoon.episode.loop import run_episode
 from platoon.episode.trajectory import DepthAwareStepBudgetTracker, TrajectoryCollection
 from platoon.utils.llm_client import LiteLLMClient
+from platoon.utils.subagent_rewards import propagate_root_success
 from platoon.visualization.event_sinks import JsonlFileSink
 
 from .agent import AppWorldAgent, AppWorldDepthAwareAgent, AppWorldRecursiveAgent
@@ -140,10 +141,14 @@ async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | Tra
                 )
             raise
 
+        result: dict | TrajectoryCollection
         if config.return_dict:
-            return current_trajectory_collection.get().to_dict()
+            result = current_trajectory_collection.get().to_dict()
         else:
-            return current_trajectory_collection.get()
+            result = current_trajectory_collection.get()
+        if config.propagate_root_success:
+            result = propagate_root_success(result)
+        return result
 
     except Exception as e:
         if config.verbose:
@@ -232,10 +237,14 @@ async def run_depth_aware_rollout(
                 )
             raise
 
+        result: dict | TrajectoryCollection
         if config.return_dict:
-            return current_trajectory_collection.get().to_dict()
+            result = current_trajectory_collection.get().to_dict()
         else:
-            return current_trajectory_collection.get()
+            result = current_trajectory_collection.get()
+        if config.propagate_root_success:
+            result = propagate_root_success(result)
+        return result
 
     except Exception as e:
         if config.verbose:

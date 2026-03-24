@@ -42,7 +42,8 @@ class RolloutConfig:
     rubric_base_url: str | None = None
     rubric_api_key: str | None = None
     rubric_api_key_env: str | None = None
-    skip_subtask_rubric: bool = False  # Skip LLM judge for subtask evaluation (set by root_reward_propagation)
+    skip_subtask_rubric: bool = False  # Skip LLM judge for subtask evaluation
+    propagate_root_success: bool = False  # Copy root reward/success to all child trajectories
     inference_params: InferenceParams = field(default_factory=InferenceParams)
 
     def __post_init__(self) -> None:

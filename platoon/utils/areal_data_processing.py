@@ -408,7 +408,6 @@ def get_train_data_for_trajectory_collection(
     concat_fn: Callable[[list[dict]], dict] | None = None,
     include_traj_depth: bool = False,
     include_traj_start: bool = False,
-    root_reward_propagation: bool = False,
 ) -> dict | None:
     """Extract training data from all trajectories in a collection.
 
@@ -422,8 +421,6 @@ def get_train_data_for_trajectory_collection(
         concat_fn: Function to concatenate training data dicts (required).
         include_traj_depth: Whether to include per-datum trajectory depth labels.
         include_traj_start: Whether to mark the first datum of each trajectory.
-        root_reward_propagation: When True, override subagent trajectory rewards
-            with the root trajectory's processed reward.
 
     Returns:
         Training data dict or None if no valid data found.
@@ -431,26 +428,12 @@ def get_train_data_for_trajectory_collection(
     if concat_fn is None:
         raise ValueError("concat_fn is required for get_train_data_for_trajectory_collection")
 
-    need_depth = include_traj_depth or root_reward_propagation
-    depth_map = _compute_trajectory_depths(trajectory_collection) if need_depth else {}
-
-    # When propagating root reward, compute it first so we can override subagent rewards.
-    root_reward: float | None = None
-    if root_reward_propagation:
-        root_traj = list(trajectory_collection["trajectories"].values())[0]
-        root_reward, _ = reward_processor(root_traj)
+    depth_map = _compute_trajectory_depths(trajectory_collection) if include_traj_depth else {}
 
     train_data = []
     for trajectory_id, trajectory in trajectory_collection["trajectories"].items():
-        # For root-reward propagation, wrap the reward_processor to override
-        # subagent trajectory rewards with the root's processed reward.
-        if root_reward_propagation and depth_map.get(trajectory_id, 0) > 0:
-            effective_processor: Callable[[dict], tuple[float, dict]] = lambda traj, rr=root_reward: (rr, {})
-        else:
-            effective_processor = reward_processor
-
         trajectory_data = get_train_data_for_trajectory(
-            trajectory, completions, task_id, trajectory_id, filter_errors, effective_processor, merge_prefixes, concat_fn
+            trajectory, completions, task_id, trajectory_id, filter_errors, reward_processor, merge_prefixes, concat_fn
         )
         if trajectory_data is not None:
             if include_traj_depth and trajectory_id in depth_map:
