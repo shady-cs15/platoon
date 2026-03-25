@@ -43,6 +43,10 @@ class RolloutConfig:
     rubric_api_key: str | None = None
     rubric_api_key_env: str | None = None
     propagate_root_success: bool = False  # Skip subtask LLM judge and copy root reward/success to all child trajectories
+    hierarchical_subagent_judging: bool = False  # Use LLM-judged correct+useful credit assignment for subagents
+    failed_root_local_reward_weight: float = 0.2  # Weight for local rewards when root task fails
+    hierarchical_gated_bonus_weight: float = 0.4  # Gated usefulness bonus weight for hierarchical delegation rewards
+    hierarchical_unconditional_bonus_weight: float = 0.0  # Ungated usefulness bonus weight for hierarchical delegation rewards
     inference_params: InferenceParams = field(default_factory=InferenceParams)
 
     def __post_init__(self) -> None:

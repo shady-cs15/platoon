@@ -8,7 +8,7 @@ from platoon.episode.context import budget_tracker, current_trajectory_collectio
 from platoon.episode.loop import run_episode
 from platoon.episode.trajectory import DepthAwareStepBudgetTracker, TrajectoryCollection
 from platoon.utils.llm_client import LiteLLMClient
-from platoon.utils.subagent_rewards import propagate_root_success
+from platoon.utils.subagent_rewards import compute_hierarchical_rewards, propagate_root_success
 from platoon.visualization.event_sinks import JsonlFileSink
 
 from .agent import AppWorldAgent, AppWorldDepthAwareAgent, AppWorldRecursiveAgent
@@ -106,6 +106,7 @@ async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | Tra
             rubric_api_key=config.rubric_api_key,
             rubric_api_key_env=config.rubric_api_key_env,
             propagate_root_success=config.propagate_root_success,
+            hierarchical_subagent_judging=config.hierarchical_subagent_judging,
         )
         agent = AppWorldRecursiveAgent(
             llm_client=llm_client,
@@ -148,6 +149,17 @@ async def run_recursive_rollout(task: Task, config: RolloutConfig) -> dict | Tra
             result = current_trajectory_collection.get()
         if config.propagate_root_success:
             result = propagate_root_success(result)
+        elif config.hierarchical_subagent_judging:
+            result = await compute_hierarchical_rewards(
+                result,
+                failed_root_local_reward_weight=config.failed_root_local_reward_weight,
+                hierarchical_gated_bonus_weight=config.hierarchical_gated_bonus_weight,
+                hierarchical_unconditional_bonus_weight=config.hierarchical_unconditional_bonus_weight,
+                model=config.rubric_model,
+                base_url=config.rubric_base_url,
+                api_key=config.rubric_api_key,
+                api_key_env=config.rubric_api_key_env,
+            )
         return result
 
     except Exception as e:
@@ -199,6 +211,7 @@ async def run_depth_aware_rollout(
             rubric_api_key=config.rubric_api_key,
             rubric_api_key_env=config.rubric_api_key_env,
             propagate_root_success=config.propagate_root_success,
+            hierarchical_subagent_judging=config.hierarchical_subagent_judging,
         )
         agent = AppWorldDepthAwareAgent(
             llm_client=llm_client,
@@ -244,6 +257,17 @@ async def run_depth_aware_rollout(
             result = current_trajectory_collection.get()
         if config.propagate_root_success:
             result = propagate_root_success(result)
+        elif config.hierarchical_subagent_judging:
+            result = await compute_hierarchical_rewards(
+                result,
+                failed_root_local_reward_weight=config.failed_root_local_reward_weight,
+                hierarchical_gated_bonus_weight=config.hierarchical_gated_bonus_weight,
+                hierarchical_unconditional_bonus_weight=config.hierarchical_unconditional_bonus_weight,
+                model=config.rubric_model,
+                base_url=config.rubric_base_url,
+                api_key=config.rubric_api_key,
+                api_key_env=config.rubric_api_key_env,
+            )
         return result
 
     except Exception as e:

@@ -21,6 +21,10 @@ class AppWorldArealTrainerConfig(PlatoonArealRLTrainerConfig):
     delegation_bonus_gated_weight: float = 0.3
     delegation_bonus_unconditional_weight: float = 0.1
     root_reward_propagation: bool = False
+    hierarchical_subagent_judging: bool = False
+    failed_root_local_reward_weight: float = 0.2
+    hierarchical_gated_bonus_weight: float = 0.4
+    hierarchical_unconditional_bonus_weight: float = 0.0
     train_split: str = "train"
     eval_split: str = "dev"
     task_filter: str = "none"
@@ -118,6 +122,16 @@ def main(args):
     # (no delegation bonus) and intermediate agents the full reward (with bonus).
     if config.root_reward_propagation:
         config.workflow_config.rollout_config.propagate_root_success = True
+    elif config.hierarchical_subagent_judging:
+        # Hierarchical judging: skip subtask LLM judges during rollout (like
+        # root_reward_propagation), but compute hierarchical rewards post-rollout
+        # using an LLM judge that scores correct + useful per child.
+        config.workflow_config.rollout_config.hierarchical_subagent_judging = True
+        config.workflow_config.rollout_config.failed_root_local_reward_weight = config.failed_root_local_reward_weight
+        config.workflow_config.rollout_config.hierarchical_gated_bonus_weight = config.hierarchical_gated_bonus_weight
+        config.workflow_config.rollout_config.hierarchical_unconditional_bonus_weight = (
+            config.hierarchical_unconditional_bonus_weight
+        )
 
     reward_processor = make_reward_processor(
         gated_weight=config.delegation_bonus_gated_weight,

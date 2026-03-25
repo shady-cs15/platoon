@@ -495,6 +495,7 @@ class AppWorldEnv(CodeActEnv):
         rubric_api_key: str | None = None,
         rubric_api_key_env: str | None = None,
         propagate_root_success: bool = False,
+        hierarchical_subagent_judging: bool = False,
         **kwargs,
     ):
         if code_executor is None:
@@ -506,6 +507,7 @@ class AppWorldEnv(CodeActEnv):
         self._rubric_api_key = rubric_api_key
         self._rubric_api_key_env = rubric_api_key_env
         self._propagate_root_success = propagate_root_success
+        self._hierarchical_subagent_judging = hierarchical_subagent_judging
         super().__init__(task, code_executor, **kwargs)
 
     @property
@@ -522,10 +524,12 @@ class AppWorldEnv(CodeActEnv):
 
         if self._state.finished:
             if isinstance(self._task, SubTask) and self._task.parent_tasks:
-                if self._propagate_root_success:
-                    # Root reward propagation: skip LLM judge, reward will be
-                    # overwritten with root reward after rollout completes.
-                    reward_misc["reason"] = "Subtask rubric skipped (propagate_root_success)."
+                if self._propagate_root_success or self._hierarchical_subagent_judging:
+                    # Root reward propagation / hierarchical judging: skip
+                    # inline LLM judge — reward will be overwritten after
+                    # rollout completes.
+                    mode = "propagate_root_success" if self._propagate_root_success else "hierarchical_subagent_judging"
+                    reward_misc["reason"] = f"Subtask rubric skipped ({mode})."
                     score = 0.
                 else:
                     try:
@@ -573,8 +577,9 @@ class AppWorldEnv(CodeActEnv):
             rubric_api_key=self._rubric_api_key,
             rubric_api_key_env=self._rubric_api_key_env,
             propagate_root_success=self._propagate_root_success,
+            hierarchical_subagent_judging=self._hierarchical_subagent_judging,
         )
-    
+
 
 class AppWorldRecursiveEnv(AppWorldEnv):
     """Environment for AppWorld tasks with recursive agent spawning and delegation rewards."""
@@ -706,5 +711,6 @@ class AppWorldDepthAwareEnv(AppWorldRecursiveEnv):
             rubric_api_key=self._rubric_api_key,
             rubric_api_key_env=self._rubric_api_key_env,
             propagate_root_success=self._propagate_root_success,
+            hierarchical_subagent_judging=self._hierarchical_subagent_judging,
         )
     
