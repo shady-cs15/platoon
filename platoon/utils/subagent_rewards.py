@@ -482,6 +482,8 @@ async def compute_hierarchical_rewards(
                 + hierarchical_unconditional_bonus_weight * avg_child_useful
             )
             final_reward_misc["reward/success"] = root_reward
+            final_reward_misc["reward/subagent_correct"] = 0.0
+            final_reward_misc["reward/subagent_useful"] = 0.0
             final_reward_misc["reward/child_usefulness_avg"] = avg_child_useful
             final_reward_misc["hierarchical_node_type"] = "root"
 
@@ -495,6 +497,7 @@ async def compute_hierarchical_rewards(
             final_reward_misc["reward/success"] = reward
             final_reward_misc["reward/subagent_correct"] = correct
             final_reward_misc["reward/subagent_useful"] = useful
+            final_reward_misc["reward/child_usefulness_avg"] = 0.0
             final_reward_misc["hierarchical_reason"] = reason
             final_reward_misc["hierarchical_node_type"] = "leaf"
 
