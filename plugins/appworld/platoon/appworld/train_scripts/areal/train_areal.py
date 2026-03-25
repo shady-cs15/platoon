@@ -47,7 +47,7 @@ def make_reward_processor(
         for step in traj["steps"]:
             reward_misc = step.get("misc", {}).get("reward_misc", {})
             for reward_key, reward_value in reward_misc.items():
-                if reward_key.startswith("reward/"):
+                if reward_key.startswith("reward/") and isinstance(reward_value, (int, float)):
                     if reward_key not in rewards_dict:
                         rewards_dict[reward_key] = 0.0
                     rewards_dict[reward_key] += reward_value

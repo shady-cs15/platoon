@@ -483,7 +483,7 @@ async def compute_hierarchical_rewards(
             )
             final_reward_misc["reward/success"] = root_reward
             final_reward_misc["reward/child_usefulness_avg"] = avg_child_useful
-            final_reward_misc["reward/hierarchical_node_type"] = "root"
+            final_reward_misc["hierarchical_node_type"] = "root"
 
         elif node_type == "leaf":
             jr = judge_results.get(traj_id)
@@ -495,8 +495,8 @@ async def compute_hierarchical_rewards(
             final_reward_misc["reward/success"] = reward
             final_reward_misc["reward/subagent_correct"] = correct
             final_reward_misc["reward/subagent_useful"] = useful
-            final_reward_misc["reward/hierarchical_reason"] = reason
-            final_reward_misc["reward/hierarchical_node_type"] = "leaf"
+            final_reward_misc["hierarchical_reason"] = reason
+            final_reward_misc["hierarchical_node_type"] = "leaf"
 
         else:  # intermediate
             jr = judge_results.get(traj_id)
@@ -515,8 +515,8 @@ async def compute_hierarchical_rewards(
             final_reward_misc["reward/subagent_correct"] = correct
             final_reward_misc["reward/subagent_useful"] = useful
             final_reward_misc["reward/child_usefulness_avg"] = avg_child_useful
-            final_reward_misc["reward/hierarchical_reason"] = reason
-            final_reward_misc["reward/hierarchical_node_type"] = "intermediate"
+            final_reward_misc["hierarchical_reason"] = reason
+            final_reward_misc["hierarchical_node_type"] = "intermediate"
 
     logger.info(
         "Hierarchical rewards computed: root_success=%.1f, w_root=%.2f, "
