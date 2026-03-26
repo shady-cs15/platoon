@@ -26,12 +26,12 @@ cluster:
     type: nfs
     nfs_record_root: /fsx/areal/name_resolve
 
-allocation_mode: sglang:d4p1t1+d4p1t1
+allocation_mode: sglang:d6p1t1+d2p1t1
 
 rollout:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  max_concurrent_rollouts: 8
+  max_concurrent_rollouts: 16
   queue_size: null
   consumer_batch_size: ${train_dataset.batch_size}
   max_head_offpolicyness: 3
