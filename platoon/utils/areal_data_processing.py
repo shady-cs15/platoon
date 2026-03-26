@@ -176,7 +176,7 @@ def get_train_data_for_trajectory(
 
     if not merge_prefixes:
         # Fall back to non-aggregated version
-        return _get_train_data_for_trajectory_no_merge(
+        result = _get_train_data_for_trajectory_no_merge(
             trajectory,
             completions,
             task_id,
@@ -186,6 +186,9 @@ def get_train_data_for_trajectory(
             trajectory_rewards_dict,
             concat_fn,
         )
+        if result is not None and trajectory_rewards_dict.get("reward/hierarchical_trainable", 1.0) == 0.0:
+            result["loss_mask"] = torch.zeros_like(result["loss_mask"])
+        return result
 
     train_data = []
     accumulator = SequenceAccumulator()
@@ -302,12 +305,16 @@ def get_train_data_for_trajectory(
     trajectory_num_input_tokens = concat_result["num_input_tokens"].sum().unsqueeze(0)
     trajectory_num_output_tokens = concat_result["num_output_tokens"].sum().unsqueeze(0)
 
-    return concat_result | {
+    result = concat_result | {
         "num_steps": torch.tensor([float(len(trajectory["steps"]))]),
         "num_input_tokens": trajectory_num_input_tokens,
         "num_output_tokens": trajectory_num_output_tokens,
         **{key: torch.tensor(value).unsqueeze(0) for key, value in trajectory_rewards_dict.items()},
     }
+    # Zero loss_mask for non-trainable trajectories (hierarchical usefulness masking)
+    if trajectory_rewards_dict.get("reward/hierarchical_trainable", 1.0) == 0.0:
+        result["loss_mask"] = torch.zeros_like(result["loss_mask"])
+    return result
 
 
 def _get_train_data_for_trajectory_no_merge(

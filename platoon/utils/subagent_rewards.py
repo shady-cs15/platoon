@@ -340,14 +340,17 @@ async def compute_hierarchical_rewards(
           R = root_success
               + gated_weight * root_success * avg(child_useful)
               + unconditional_weight * avg(child_useful)
+          (always trainable)
         - Leaf:
-          R = w(root) * (correct * useful)
+          R = w(root) * correct
+          (trainable only if useful == 1; loss_mask zeroed otherwise)
         - Intermediate:
           R = w(root) * (
-                  correct * useful
-                  + gated_weight * (correct * useful) * avg(child_useful)
+                  correct
+                  + gated_weight * correct * avg(child_useful)
                   + unconditional_weight * avg(child_useful)
               )
+          (trainable only if useful == 1; loss_mask zeroed otherwise)
 
     Where:
         - w(root) = 1.0 if root succeeds, else failed_root_local_reward_weight
@@ -485,6 +488,7 @@ async def compute_hierarchical_rewards(
             final_reward_misc["reward/subagent_correct"] = 0.0
             final_reward_misc["reward/subagent_useful"] = 0.0
             final_reward_misc["reward/child_usefulness_avg"] = avg_child_useful
+            final_reward_misc["reward/hierarchical_trainable"] = 1.0
             final_reward_misc["hierarchical_node_type"] = "root"
 
         elif node_type == "leaf":
@@ -493,11 +497,12 @@ async def compute_hierarchical_rewards(
             useful = jr.useful if jr else 0.0
             reason = jr.reason if jr else "no_judge_result"
 
-            reward = w_root * correct * useful
+            reward = w_root * correct
             final_reward_misc["reward/success"] = reward
             final_reward_misc["reward/subagent_correct"] = correct
             final_reward_misc["reward/subagent_useful"] = useful
             final_reward_misc["reward/child_usefulness_avg"] = 0.0
+            final_reward_misc["reward/hierarchical_trainable"] = useful
             final_reward_misc["hierarchical_reason"] = reason
             final_reward_misc["hierarchical_node_type"] = "leaf"
 
@@ -508,16 +513,16 @@ async def compute_hierarchical_rewards(
             reason = jr.reason if jr else "no_judge_result"
 
             avg_child_useful = _avg_immediate_child_useful(traj_id)
-            local_success = correct * useful
             reward = w_root * (
-                local_success
-                + hierarchical_gated_bonus_weight * local_success * avg_child_useful
+                correct
+                + hierarchical_gated_bonus_weight * correct * avg_child_useful
                 + hierarchical_unconditional_bonus_weight * avg_child_useful
             )
             final_reward_misc["reward/success"] = reward
             final_reward_misc["reward/subagent_correct"] = correct
             final_reward_misc["reward/subagent_useful"] = useful
             final_reward_misc["reward/child_usefulness_avg"] = avg_child_useful
+            final_reward_misc["reward/hierarchical_trainable"] = useful
             final_reward_misc["hierarchical_reason"] = reason
             final_reward_misc["hierarchical_node_type"] = "intermediate"
 
