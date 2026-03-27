@@ -54,7 +54,7 @@ workflow_config:
     timeout: 2700
     step_timeout: 2700
     # Rubric judge model for hierarchical subagent judging
-    rubric_model: openrouter/qwen/qwen3.5-27b
+    rubric_model: openrouter/qwen/qwen3-32b
     rubric_base_url: https://openrouter.ai/api/v1
     rubric_api_key_env: OPENROUTER_API_KEY
     inference_params:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -195,17 +196,80 @@ def _build_judge_user_prompt(
     )
 
 
+def _extract_json_by_bracket_matching(text: str) -> str | None:
+    """Find the first top-level JSON object in text using bracket counting."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape_next = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\":
+            if in_string:
+                escape_next = True
+            continue
+        if ch == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _strip_thinking_tags(response: str) -> str:
+    """Remove <think>...</think> blocks from model responses."""
+    return re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
+
+
 def _parse_hierarchical_judge_response(response: str) -> HierarchicalJudgeResult:
     """Parse the judge response into a HierarchicalJudgeResult.
 
+    Handles models that include reasoning/thinking before JSON output.
     Degrades gracefully: returns zeros on parse failure rather than raising.
     """
     try:
-        json_start = response.find("{")
-        json_end = response.rfind("}")
-        if json_start == -1 or json_end == -1 or json_end < json_start:
-            raise ValueError("No JSON object found in judge response.")
-        parsed = json.loads(response[json_start : json_end + 1])
+        # Strip thinking tags if present
+        cleaned = _strip_thinking_tags(response)
+
+        # Try 1: whole response is JSON
+        parsed = None
+        try:
+            parsed = json.loads(cleaned.strip())
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try 2: extract JSON by bracket matching (handles extra text around JSON)
+        if parsed is None:
+            json_str = _extract_json_by_bracket_matching(cleaned)
+            if json_str is not None:
+                try:
+                    parsed = json.loads(json_str)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+        # Try 3: if cleaning didn't help, try bracket matching on original response
+        if parsed is None and cleaned != response:
+            json_str = _extract_json_by_bracket_matching(response)
+            if json_str is not None:
+                try:
+                    parsed = json.loads(json_str)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+        if parsed is None:
+            raise ValueError("No valid JSON object found in judge response.")
+
         correct = 1.0 if parsed.get("correct") in (1, 1.0, True) else 0.0
         useful = 1.0 if parsed.get("useful") in (1, 1.0, True) else 0.0
         reason = str(parsed.get("reason", ""))
