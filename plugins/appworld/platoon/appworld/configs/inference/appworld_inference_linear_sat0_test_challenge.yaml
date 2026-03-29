@@ -2,7 +2,7 @@
 inference:
   model_name: openai/appworld-full-linear-sat-0-step-99
   model_endpoint: http://127.0.0.1:30000/v1
-  model_api_key: null
+  model_api_key: "EMPTY"
   output_dir: ./inference_results/appworld/full-linear-sat-0-step-99-test-challenge
   resume: true
   workflow:
