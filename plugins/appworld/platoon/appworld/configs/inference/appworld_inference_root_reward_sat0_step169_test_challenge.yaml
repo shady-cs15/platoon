@@ -1,0 +1,31 @@
+# AppWorld inference benchmark config — full-recursive-root-reward-sat-0 step 169 on test_challenge
+inference:
+  model_name: openai/appworld-full-recursive-root-reward-sat-0-step-169
+  model_endpoint: http://127.0.0.1:30000/v1
+  model_api_key: "EMPTY"
+  output_dir: ./inference_results/appworld/full-recursive-root-reward-sat-0-step-169-test-challenge
+  resume: true
+  workflow:
+    num_rollouts_per_task: 1
+    num_concurrent_workers: 8
+    success_threshold: 1.0
+    fail_fast: false
+    use_subprocesses: true
+    subprocess_max_workers: 10
+    rollout_config:
+      max_steps: 75
+      output_dir: ./inference_results/appworld/full-recursive-root-reward-sat-0-step-169-test-challenge/rollouts
+      verbose: true
+      timeout: 1800
+      step_timeout: 1800
+      inference_params:
+        temperature: 0.7
+        max_completion_tokens: 2048
+
+dataset_split: test_challenge
+num_tasks: null
+use_recursive_agent: true
+task_id: null
+stage: full
+shuffle_tasks: false
+seed: 42
